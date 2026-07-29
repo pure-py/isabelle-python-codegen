@@ -1,0 +1,28 @@
+###############################################################################
+# Isabelle
+###############################################################################
+
+# Session build directories
+output/
+heaps/
+browser_info/
+
+# Generated documents
+*.pdf
+*.dvi
+*.ps
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Isabelle temporary files
+*.thy~
+*.ML~
+*.sml~
+*.scala~
