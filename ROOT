@@ -2,8 +2,9 @@ chapter AFP
 
 session Python = HOL +
   description "A Python frontend for the Isabelle code generator."
-  options [timeout = 300]
+  options [timeout = 300, document = false]
   theories
     Python_Setup
-  document_files
-    "root.tex"
+    Example
+    Example_tyclass
+  export_files (in "python_out") "*:**"

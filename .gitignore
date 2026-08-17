@@ -4,6 +4,7 @@
 
 # Session build directories
 output/
+python_out/
 heaps/
 browser_info/
 

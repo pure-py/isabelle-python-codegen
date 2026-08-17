@@ -46,7 +46,7 @@ fun print_python_numeral num = signed_string_of_int num;
 val literals = Literals {
   literal_string = print_python_string,
   literal_numeral = print_python_numeral,
-  literal_list = Pretty.enum "," "[" "]", (* Maybe have to rething this *)
+  literal_list = Pretty.enum "," "[" "]", (* Maybe have to rethink this *)
   infix_cons = (6, "<no infix cons operator in Python>")
 };
 
@@ -212,18 +212,51 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
     and wrap_if true = (fn p => Pretty.block [Pretty.str "return ", p])
       | wrap_if false = I
 
-    and print_app_expr const_syntax tyvars some_thm vars (const as { sym, ...}, ts) =
-      let
-        val l = args_num sym
-        val (immediate, curried) = chop l ts
-        val immediate_pretty =
-          map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
-        val curried_pretty =
-          map (fn t => Pretty.enclose "(" ")"
-            [print_python_expr const_syntax tyvars some_thm vars NOBR t]) curried
-        val head_pretty = (Pretty.str o deresolve) sym
-        val call = gen_applify true "(" ")" I NOBR head_pretty immediate_pretty
-      in call :: curried_pretty end
+    and print_dict tyvars some_thm vars fxy (Dict (classrels, plain_dict)) =
+      fold (fn classrel => fn p =>
+        Pretty.block [p, Pretty.str".", (Pretty.str o deresolve) (Class_Relation classrel)])
+      classrels
+      (print_plain_dict tyvars some_thm vars fxy plain_dict)
+    
+    and print_plain_dict tyvars some_thm vars fxy (Dict_Const (inst, dictss)) =
+          gen_applify true "(" ")" I NOBR
+            ((Pretty.str o deresolve) (Class_Instance inst))
+            (map_filter (print_dicts tyvars some_thm vars BR o snd) dictss)
+      | print_plain_dict tyvars some_thm vars fxy (Dict_Var { var, index, length, ... }) =
+          Pretty.str (var ^ "_dict" ^ (if length = 1 then "" else string_of_int (index + 1)))
+
+    and print_dicts tyvars some_thm vars = tuplify (print_dict tyvars some_thm vars)
+
+    and print_app_expr const_syntax tyvars some_thm vars (const as { sym, dictss, ...}, ts) =
+      if is_class_param sym andalso not (null dictss)
+      then 
+        let 
+          val self_dict_pretty = print_dict tyvars some_thm vars NOBR (hd (hd dictss))
+          val extra_dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) (tl dictss)
+          val l = args_num sym
+          val (immediate, curried) = chop l ts
+          val immediate_pretty =
+            map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
+          val curried_pretty =
+            map (fn t => Pretty.enclose "(" ")"
+              [print_python_expr const_syntax tyvars some_thm vars NOBR t]) curried
+          val head_pretty = Pretty.block [self_dict_pretty, Pretty.str ".",
+            Pretty.str (Code_Symbol.default_base sym)]
+          val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dict_pretty @ immediate_pretty)
+        in call :: curried_pretty end
+      else
+        let
+          val l = args_num sym
+          val (immediate, curried) = chop l ts
+          val dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) dictss
+          val immediate_pretty =
+            map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
+          val curried_pretty =
+            map (fn t => Pretty.enclose "(" ")"
+              [print_python_expr const_syntax tyvars some_thm vars NOBR t]) curried
+          val head_pretty = (Pretty.str o deresolve) sym
+          val call = gen_applify true "(" ")" I NOBR head_pretty (dict_pretty @ immediate_pretty)
+        in call :: curried_pretty end
 
     and print_app is_stmt const_syntax tyvars some_thm vars fxy (const, ts) =
       if List.exists (fn name => #sym const = Constant name) undefineds
@@ -262,9 +295,44 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
          indent_block 4 (Pretty.chunks (super_fields @ fields))]
       end;
 
+    fun print_dict_args vs =
+      if forall (null o snd) vs then []
+      else (warning "instance has type-variable constraints requiring \
+        \dictionary parameters, which is not yet supported"; [])
+
     fun print_python_instance (target, class) { vs, tyco, inst_params, superinsts, ... } =
       let
-      in error "TODO" end;
+        val tyvars = intro_vars (map fst vs) reserved
+        val class_pretty = Pretty.str (deresolve_class class)
+        val instance_name = deresolve_inst (target, class)
+
+        val _ = if not (null superinsts)
+          then warning ("instance " ^ instance_name ^
+            " has superclass dictionaries, which this backend doesn't support yet")
+          else ()
+        
+        fun print_classparam_field ((classparam, (const, dom_length)), (thm, _)) =
+          let
+            val aux_names = Name.invent (snd reserved) "a" dom_length
+            val vars = intro_vars aux_names reserved
+            val args = map (IVar o SOME) aux_names
+            val call = print_app false const_syntax tyvars (SOME thm) vars NOBR (const, args)
+            val params = Pretty.enum "," "" "" (map (Pretty.str o lookup_var vars) aux_names)
+          in  concat [Pretty.str (Long_Name.base_name (deresolve_const classparam)), Pretty.str "=",
+                Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
+          end
+        
+        val fields = map print_classparam_field inst_params
+        val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
+        val head = concat [Pretty.str "def", Pretty.str instance_name, 
+          Pretty.enum "," "(" ")" (print_dict_args vs), Pretty.str ":"]
+      in Pretty.chunks [head, indent_block 4 body] end;
+
+    fun print_dict_args tyvars some_thm vars vs = map_filter (fn (v, sort) =>
+          print_dicts tyvars some_thm vars BR
+            (map_index (fn (i, _) => Dict ([],
+              Dict_Var { var = v, index = i, length = length sort, 
+                class = nth sort i, unique = true })) sort)) vs
 
     fun print_python_func const vs ty [] =
       (* if we have no code equations *)
@@ -273,8 +341,9 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val tyvars = intro_vars (map fst vs) reserved
         val params = Name.invent (snd reserved) "a" (length tys)
         val vars = intro_vars params tyvars
+        val dict_params = print_dict_args tyvars NONE vars vs
         val head = concat [Pretty.str "def", Pretty.str (deresolve_const const),
-          Pretty.enum "," "(" ")" (map (Pretty.str o lookup_var vars) params), 
+          Pretty.enum "," "(" ")" (dict_params @ map (Pretty.str o lookup_var vars) params), 
           Pretty.str ":"]
         val _ = warning ("function " ^ const ^ " has no code equations")
       in Pretty.chunks [head,
@@ -293,9 +362,10 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             then (map (fn IVar x => x) o fst o fst o hd) eqs
             else map SOME (aux_params vars1 (map (fst o fst) eqs))
           val vars2 = intro_vars (map_filter I params) vars1
+          val dict_params = print_dict_args tyvars NONE vars2 vs
           val head = concat [Pretty.str "def", Pretty.str (deresolve_const const),
             Pretty.enum "," "(" ")"
-              (map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
+              (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
             Pretty.str ":"]
           fun print_rhs some_thm vars t = Pretty.block
             [Pretty.str "return ", print_python_expr const_syntax tyvars some_thm vars NOBR t]
