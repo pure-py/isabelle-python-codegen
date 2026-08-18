@@ -502,7 +502,8 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
-          val stmt_ps = Code_Symbol.Graph.keys stmt_gr
+          val stmt_ps = Code_Symbol.Graph.topological_order stmt_gr
+            |> rev  (* not sure why we need to reverse here *)
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
             of (_, NONE) => NONE
              | (_, SOME (export, stmt)) => SOME
