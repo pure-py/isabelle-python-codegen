@@ -145,7 +145,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val vars0 = intro_vars [tvar] vars
         val assign = concat [Pretty.str tvar, Pretty.str "=",
           print_python_expr const_syntax tyvars some_thm vars NOBR target]
-        val match_head = concat [Pretty.str "match", Pretty.str tvar, Pretty.str ":"]
+        val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"]
         fun one_arm (pattern, term) =
           let
             val (header, vars', _) = print_case_arm tyvars some_thm vars0
@@ -153,7 +153,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             val body = print_python_term const_syntax tyvars some_thm vars' NOBR term
           in Pretty.chunks [header, indent_block 4 body] end
         val fallthrough = Pretty.chunks
-          [concat [Pretty.str "case", Pretty.str "_", Pretty.str ":"],
+          [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
            indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")]
         in
           (* TODO: We should probably check if we need the fallthrough here *)
@@ -273,7 +273,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
               |> map (fn (fname, _) => Pretty.str (fname ^ ": Any"))
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
-             concat [Pretty.str "class", Pretty.str (deresolve_const name), Pretty.str ":"],
+             Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
              indent_block 4 (if null fields then Pretty.str "pass" else Pretty.chunks fields)]
           end
       in Pretty.chunks (map print_constructor cos) end;
@@ -287,7 +287,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             (Long_Name.base_name (deresolve_classrel (self, super)) ^ ": Any"))
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
-         concat [Pretty.str "class", Pretty.str (deresolve_class sym), Pretty.str ":"],
+         Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
          indent_block 4 (Pretty.chunks (super_fields @ fields))]
       end;
 
@@ -320,7 +320,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         
         val fields = map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
-        val head = concat [Pretty.str "def", Pretty.str instance_name, 
+        val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
           Pretty.enum "," "(" ")" (print_dict_args vs), Pretty.str ":"]
       in Pretty.chunks [head, indent_block 4 body] end;
 
@@ -338,7 +338,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val params = Name.invent (snd reserved) "a" (length tys)
         val vars = intro_vars params tyvars
         val dict_params = print_dict_args tyvars NONE vars vs
-        val head = concat [Pretty.str "def", Pretty.str (deresolve_const const),
+        val head = Pretty.block [Pretty.str "def ", Pretty.str (deresolve_const const),
           Pretty.enum "," "(" ")" (dict_params @ map (Pretty.str o lookup_var vars) params), 
           Pretty.str ":"]
         val _ = warning ("function " ^ const ^ " has no code equations")
@@ -361,7 +361,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           val dict_params = print_dict_args tyvars NONE vars2 vs
           (* Is this a function or a simple value? *)
           val is_value = simple andalso null params andalso null dict_params
-          val head = concat [Pretty.str "def", Pretty.str (deresolve_const const),
+          val head = Pretty.block [Pretty.str "def ", Pretty.str (deresolve_const const),
             Pretty.enum "," "(" ")"
               (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
             Pretty.str ":"]
@@ -394,16 +394,16 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
                     then print_python_pattern (hd sub_patterns)
                     else Pretty.enum "," "(" ")" (map print_python_pattern sub_patterns)
                   val header = case print_guard tyvars some_thm vars' guards of
-                      NONE => concat [Pretty.str "case", pattern_pretty, Pretty.str ":"]
-                    | SOME guard => concat
-                        [Pretty.str "case", pattern_pretty, Pretty.str "if", guard, Pretty.str ":"]
+                      NONE => Pretty.block [Pretty.str "case ", pattern_pretty, Pretty.str ":"]
+                    | SOME guard => Pretty.block
+                        [Pretty.str "case ", pattern_pretty, Pretty.str "if", guard, Pretty.str ":"]
                 in Pretty.chunks [header, indent_block 4 (print_rhs some_thm vars' t)] end
               val fallthrough = Pretty.chunks
-                [concat [Pretty.str "case", Pretty.str "_", Pretty.str ":"],
+                [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
                 indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")]
             in Pretty.chunks
               [head, indent_block 4 (Pretty.chunks
-                [concat [Pretty.str "match", scrutinee, Pretty.str ":"],
+                [Pretty.block [Pretty.str "match ", scrutinee, Pretty.str ":"],
                  indent_block 4 (Pretty.chunks (map print_one_equation eqs @ [fallthrough]))])]
             end
         end;
@@ -521,10 +521,10 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
         val import_ps = imports
           |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
-      in ([mod_name ^ ".py"], Pretty.chunks2
-        (Pretty.str "from dataclass import dataclass"
+        val header_ps = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
           :: Pretty.str "from typing import Any, Callable"
-          :: import_ps @ stmt_ps))
+          :: import_ps)
+      in ([mod_name ^ ".py"], Pretty.chunks2 (header_ps :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts
