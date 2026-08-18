@@ -10,9 +10,6 @@ open Basic_Code_Symbol;
 open Basic_Code_Thingol;
 open Code_Printer;
 
-infix 5 @@;
-infix 5 @|;
-
 val target = "Python";
 
 datatype python_stmt = 
@@ -49,8 +46,6 @@ val literals = Literals {
   literal_list = Pretty.enum "," "[" "]", (* Maybe have to rethink this *)
   infix_cons = (6, "<no infix cons operator in Python>")
 };
-
-val block_enclose = Pretty.block_enclose o apply2 Pretty.unbreakable;
 
 fun indent_block n p = Pretty.indent n p;
 
@@ -274,7 +269,6 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             val named_fields = Name.invent_names ctxt "a" tys
             val fields = named_fields
               |> map (fn (fname, _) => Pretty.str (fname ^ ": Any"))
-              (* TODO include typing information here so mypy is happy *)
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
              concat [Pretty.str "class", Pretty.str (deresolve_const name), Pretty.str ":"],

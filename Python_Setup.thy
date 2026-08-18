@@ -9,18 +9,25 @@ code_identifier
 | code_module Code_Target_Int \<rightharpoonup> (Python) Arith
 | code_module Code_Numeral \<rightharpoonup> (Python) Arith
 
+(* Panic *)
+code_printing
+  constant Code.abort \<rightharpoonup> (Python) "raise RuntimeError(\"_\")"
+
 (* Bools *)
 code_printing
   type_constructor bool \<rightharpoonup> (Python) "bool"
 | constant "False::bool" \<rightharpoonup> (Python) "False"
 | constant "True::bool" \<rightharpoonup> (Python) "True"
+| constant HOL.Not \<rightharpoonup> (Python) "not _"
+| constant HOL.conj \<rightharpoonup> (Python) infixl 1 "and"
+| constant HOL.disj \<rightharpoonup> (Python) infixl 0 "or"
+| constant HOL.implies \<rightharpoonup> (Python) "!(not ((_)) or (_))"
+| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Python) infix 4 "=="
 
-code_printing
-  constant Code.abort \<rightharpoonup> (Python) "raise RuntimeError(\"_\")"
-
+(* Strings *)
 code_printing
     type_constructor String.literal \<rightharpoonup> (Python) "str"
-  | constant "STR ''''" \<rightharpoonup> (Python) "\"\""
+  (* | constant "STR ''''" \<rightharpoonup> (Python) "\"\""
   | constant "(+) :: String.literal \<Rightarrow> String.literal \<Rightarrow> String.literal" \<rightharpoonup>
       (Python) infixl 65 "+"
   | constant "HOL.equal :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
@@ -28,7 +35,7 @@ code_printing
   | constant "(\<le>) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
       (Python) infixl 35 "<="
   | constant "(<) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-      (Python) infixl 35 "<"
+      (Python) infixl 35 "<" *)
 
 setup \<open>
   fold Literal.add_code ["Python"]

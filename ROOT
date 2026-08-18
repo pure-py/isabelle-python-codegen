@@ -7,4 +7,5 @@ session Python = HOL +
     Python_Setup
     Example
     Example_tyclass
+    Example_lists
   export_files (in "python_out") "*:**"
