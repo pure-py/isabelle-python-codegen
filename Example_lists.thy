@@ -8,6 +8,9 @@ definition example :: "int list" where
 fun prepend :: "'a \<Rightarrow> 'a list \<Rightarrow> 'a list" where
   "prepend x xs = x # xs"
 
-export_code example prepend in Python
+definition example2 :: "int list" where
+  "example2 = prepend 5 example"
+
+export_code example2 in Python file_prefix "."
 
 end

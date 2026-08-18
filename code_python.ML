@@ -63,7 +63,7 @@ fun indent_block n p = Pretty.indent n p;
  *   deresolve: module relative naming resolver
  *)
 fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
-    is_sum_type is_class_param is_constr (deresolve, _) =
+    is_sum_type is_class_param is_value is_constr (deresolve, _) =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
@@ -239,6 +239,8 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             Pretty.str (Code_Symbol.default_base sym)]
           val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dict_pretty @ immediate_pretty)
         in call :: curried_pretty end
+      else if is_value sym andalso null dictss andalso null ts
+      then [(Pretty.str o deresolve) sym]
       else
         let
           val l = args_num sym
@@ -357,6 +359,8 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             else map SOME (aux_params vars1 (map (fst o fst) eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args tyvars NONE vars2 vs
+          (* Is this a function or a simple value? *)
+          val is_value = simple andalso null params andalso null dict_params
           val head = concat [Pretty.str "def", Pretty.str (deresolve_const const),
             Pretty.enum "," "(" ")"
               (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
@@ -367,7 +371,12 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           if simple
           then
             let val ((_, t), (some_thm, _)) = hd eqs
-            in Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] end
+            in 
+              if is_value
+              then concat [Pretty.str (deresolve_const const), Pretty.str "=",
+                print_python_expr const_syntax tyvars some_thm vars2 NOBR t]
+              else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] 
+            end
           else
             let 
               val param_names = map_filter (Option.map (lookup_var vars2)) params
@@ -407,15 +416,11 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           print_python_class sym class
       | print_stmt (Class_Instance sym, (_, Instance instance)) =
           print_python_instance sym instance
-      | print_stmt (_, _) = Pretty.str "# <unknown statement kind"
+      | print_stmt (_, _) = Pretty.str "# <unknown statement kind>"
   in print_stmt end;
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    fun namify_module name_fragment ((nsp_class, nsp_object), nsp_common) =
-      let val declare = Name.declare name_fragment
-      in (name_fragment, ((declare nsp_class, declare nsp_object), declare nsp_common)) end;
-
     fun namify_common base ((nsp_class, nsp_object), nsp_common) =
       let val (base', nsp_common') = Name.variant base nsp_common
       in (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), nsp_common')) end;
@@ -429,28 +434,27 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       | namify_stmt (Code_Thingol.Classinst _) = namify_common;
     
     (* Code_Thingol.stmt -> python_stmt option *)
-    fun modify_stmt (_, (_, Code_Thingol.Fun (_, SOME _))) = NONE
-      | modify_stmt (_, (export, Code_Thingol.Fun (x, _))) = SOME (export, Fun x)
-      | modify_stmt (_, (export, Code_Thingol.Datatype x)) = SOME (export, Datatype x)
-      | modify_stmt (_, (_, Code_Thingol.Datatypecons _)) = NONE
-      | modify_stmt (Type_Class class, (export, Code_Thingol.Class x)) = SOME (export, Class x)
-      | modify_stmt (_, (_, Code_Thingol.Classrel x)) = NONE
-      | modify_stmt (_, (_, Code_Thingol.Classparam x)) = NONE
-      | modify_stmt (_, (export, Code_Thingol.Classinst inst)) = SOME (export, Instance inst);
+    fun modify_stmt (Code_Thingol.Fun (_, SOME _)) = NONE
+      | modify_stmt (stmt as Code_Thingol.Fun _) = SOME stmt
+      | modify_stmt (Code_Thingol.Datatype (_, [])) = NONE
+      | modify_stmt (stmt as Code_Thingol.Datatype _) = SOME stmt
+      | modify_stmt (Code_Thingol.Datatypecons _) = NONE
+      | modify_stmt (stmt as Code_Thingol.Class _) = SOME stmt
+      | modify_stmt (Code_Thingol.Classrel _) = NONE
+      | modify_stmt (Code_Thingol.Classparam _) = NONE
+      | modify_stmt (stmt as Code_Thingol.Classinst _) = SOME stmt;
   in
-    Code_Namespace.hierarchical_program ctxt
-      { module_name = module_name, reserved = reserved, identifiers = identifiers,
-        empty_nsp = ((reserved, reserved), reserved), namify_module = namify_module,
-        namify_stmt = namify_stmt, cyclic_modules = false,
-        class_transitive = true, class_relation_public = true, empty_data = (),
-        memorize_data = K I, modify_stmts = map modify_stmt }
+    Code_Namespace.flat_program ctxt
+      { module_prefix = "", module_name = module_name, reserved = reserved,
+        identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+        namify_stmt = namify_stmt, modify_stmt = modify_stmt }
       exports program
   end;
 
 fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
     identifiers, includes, class_syntax, tyco_syntax, const_syntax } program exports =
   let
-    val { deresolver, hierarchical_program = python_program } =
+    val { deresolver, flat_program = python_program } =
       python_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;
 
@@ -469,6 +473,11 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
     fun is_class_param (sym as Constant const) = case Code_Symbol.Graph.get_node program sym
      of Code_Thingol.Classparam _ => true
       | _ => false;
+
+    fun is_value (sym as Constant _) = (case Code_Symbol.Graph.get_node program sym
+      of Code_Thingol.Fun (((vs, _), [((ts, _), _)]), _) => null vs andalso null ts
+       | _ => false)
+      | is_value _ = false;
     
     fun classparams_of_class class = case Code_Symbol.Graph.get_node program (Type_Class class)
      of Code_Thingol.Class (_, (_, classparams)) => classparams;
@@ -481,29 +490,46 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
           (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)
             (classparams_of_class class)) const;
 
-    fun print_stmt prefix_fragments b =
-      ("", print_python_stmt undefineds tyco_syntax const_syntax (make_vars reserved_syms)
-        args_num is_sum_type is_class_param
-        (Code_Thingol.is_constr program) (deresolver prefix_fragments, deresolver) b);
+    fun python_stmt_of_thingol (Code_Thingol.Fun (x, _)) = Fun x
+      | python_stmt_of_thingol (Code_Thingol.Datatype x) = Datatype x
+      | python_stmt_of_thingol (Code_Thingol.Class x) = Class x
+      | python_stmt_of_thingol (Code_Thingol.Classinst inst) = Instance inst
+      | python_stmt_of_thingol _ = raise Fail "unexpected statement";
 
-    fun print_module _ base _ ps = (base, Pretty.chunks2
-      (Pretty.str "from dataclasses import dataclass"
-        :: Pretty.str "from typing import Any, Callable"
-        :: map snd ps));
+    val module_names = Graph.keys python_program;
 
-    val p = Code_Namespace.print_hierarchical {
-        print_module = print_module, print_stmt = print_stmt, lift_markup = K I }
-      python_program
-      |> curry (op @) includes
-      |> map (apfst (fn a => [a, "exported.py"]));
+    val module_stmts = module_names
+      |> map (fn mod_name =>
+        let
+          val (stmt_gr, imports) = Graph.get_node python_program mod_name;
+          val stmt_ps = Code_Symbol.Graph.keys stmt_gr
+            |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
+            of (_, NONE) => NONE
+             | (_, SOME (export, stmt)) => SOME
+              (print_python_stmt undefineds tyco_syntax const_syntax (make_vars reserved_syms)
+                args_num is_sum_type is_class_param is_value
+                (Code_Thingol.is_constr program) (deresolver mod_name, deresolver)
+                (sym, (export, python_stmt_of_thingol stmt))));
+        in
+          (mod_name, imports, stmt_ps) end)
+      |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
 
-    val is_single_module = length p = 1
-  in (
-    if is_single_module
-    then Code_Target.Singleton ("python", snd (hd p))
-    else Code_Target.Hierarchy (p), try (deresolver [])
-  ) end;
+    val nonempty_names = map #1 module_stmts;
 
+    fun print_one_module (mod_name, imports, stmt_ps) =
+      let
+        val import_ps = imports
+          |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
+          |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
+      in ([mod_name ^ ".py"], Pretty.chunks2
+        (Pretty.str "from dataclass import dataclass"
+          :: Pretty.str "from typing import Any, Callable"
+          :: import_ps @ stmt_ps))
+      end;
+
+    val p = map print_one_module module_stmts
+     |> curry (op @) (map (apfst (fn a => [a])) includes);
+  in (Code_Target.Hierarchy (p), try (deresolver "")) end;
 
 val serializer : Code_Target.serializer =
   Code_Target.parse_args (
