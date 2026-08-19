@@ -1,5 +1,5 @@
 theory Example_lists
-    imports Main Python_Setup
+    imports Main "Python.Python_Setup"
 begin
 
 definition example :: "int list" where

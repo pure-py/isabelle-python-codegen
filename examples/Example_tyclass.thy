@@ -1,5 +1,5 @@
 theory Example_tyclass
-    imports Main Python_Setup
+    imports Main "Python.Python_Setup"
 begin
 
 class describable =

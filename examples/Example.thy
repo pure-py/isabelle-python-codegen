@@ -1,5 +1,5 @@
 theory Example
-    imports Main Python_Setup
+    imports Main "Python.Python_Setup"
 begin
 
 datatype color = Red | Green | Blue
