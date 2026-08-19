@@ -21,3 +21,10 @@ session Python_Examples in "examples" = Python +
     Example_records
     Example_record_ext
   export_files (in "../python_out") "*:**"
+
+session Python_Test_Quick in "test/quick" = Python +
+  description "Quick test session for Python backend"
+  options [timeout = 300]
+  theories [document = false]
+    Quick_Test
+  export_files (in "python_out") "*:**"

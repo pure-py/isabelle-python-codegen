@@ -7,6 +7,7 @@ output/
 python_out/
 heaps/
 browser_info/
+__pycache__/
 
 # Generated documents
 *.pdf
