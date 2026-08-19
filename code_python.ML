@@ -301,11 +301,6 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val tyvars = intro_vars (map fst vs) reserved
         val class_pretty = Pretty.str (deresolve_class class)
         val instance_name = deresolve_inst (target, class)
-
-        val _ = if not (null superinsts)
-          then warning ("instance " ^ instance_name ^
-            " has superclass dictionaries, which this backend doesn't support yet")
-          else ()
         
         fun print_classparam_field ((classparam, (const, dom_length)), (thm, _)) =
           let
@@ -317,8 +312,15 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           in  concat [Pretty.str (Long_Name.base_name (deresolve_const classparam)), Pretty.str "=",
                 Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
           end
+
+        fun print_superinst_field (super_class, dictss) =
+          let
+            val field_name = Long_Name.base_name (deresolve_classrel (class, super_class))
+            val value = print_plain_dict tyvars NONE tyvars NOBR
+              (Dict_Const ((tyco, super_class), dictss))
+          in concat [Pretty.str field_name, Pretty.str "=", value] end
         
-        val fields = map print_classparam_field inst_params
+        val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
         val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
           Pretty.enum "," "(" ")" (print_dict_args vs), Pretty.str ":"]
