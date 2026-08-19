@@ -210,7 +210,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
     and print_dict tyvars some_thm vars fxy (Dict (classrels, plain_dict)) =
       fold (fn classrel => fn p =>
         Pretty.block [p, Pretty.str".", (Pretty.str o deresolve) (Class_Relation classrel)])
-      classrels
+      (rev classrels) (* need to go from source dict inwards *)
       (print_plain_dict tyvars some_thm vars fxy plain_dict)
     
     and print_plain_dict tyvars some_thm vars fxy (Dict_Const (inst, dictss)) =
