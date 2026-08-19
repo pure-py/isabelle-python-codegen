@@ -82,41 +82,80 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       | PClass of string * python_pattern list
       | PTuple of python_pattern list
       | PLiteral of Pretty.T;
+
+    datatype python_guard = GEq of string * iterm | GRaw of Pretty.T;
+
+    (* Peel consecutive Suc layers of term *)
+    fun dest_suc_chain t = case Code_Thingol.unfold_const_app t of
+      SOME ({ sym = Constant "Nat.Suc", ... }, [arg]) =>
+        let val (n, base) = dest_suc_chain arg in (n + 1, base) end
+      | _ => (0, t)
     
     fun pattern_of_iterm 
         (* Wildcard pattern _ *)
-        vars (IVar NONE) = (PWild, [], vars)
+        vars (IVar NONE) = (PWild, [], [], vars)
 
         (* a variable pattern v *)
       | pattern_of_iterm vars (IVar (SOME v)) =
           let val vars' = intro_vars [v] vars
-          in (PCapture (lookup_var vars' v), [], vars') end
+          in (PCapture (lookup_var vars' v), [], [], vars') end
       
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
-          if is_constr sym andalso args_num sym = 0
+          if sym = Constant "Nat.zero_nat_inst.zero_nat"
+          then (PLiteral (Pretty.str "0"), [], [], vars)
+          else if is_constr sym andalso args_num sym = 0
           (* nullary constructors, like None, True, Nil, ... *)
-          then (PClass (deresolve sym, []), [], vars)
+          then (PClass (deresolve sym, []), [], [], vars)
           else
             (* fallback, create a new name + attach guards *)
             let
               val [name] = Name.invent (snd vars) "c" 1
               val vars' = intro_vars [name] vars
-            in (PCapture name, [(name, t)], vars') end
-      | pattern_of_iterm vars t = (case Code_Thingol.unfold_const_app t of
-            SOME ({ sym, ... }, args) =>
-              let 
-                val (rev_ps, guards, vars') =
-                  fold (fn arg => fn (ps, gs, vs) =>
-                    let val (p, g, vs') = pattern_of_iterm vs arg
-                    in (p :: ps, gs @ g, vs') end)
-                  args ([], [], vars)
-                val ps = rev rev_ps
-              in 
-                if sym = Constant "Product_Type.Pair"
-                then (PTuple ps, guards, vars')
-                else (PClass (deresolve sym, rev rev_ps), guards, vars')
-              end
-          | NONE => error "bad term in pattern");
+            in (PCapture name, [GEq (name, t)], [], vars') end
+      | pattern_of_iterm vars t = 
+        (case dest_suc_chain t of
+            (0, _) => (case Code_Thingol.unfold_const_app t of
+                SOME ({ sym, ... }, args) =>
+                  let 
+                    val (rev_ps, guards, preamble, vars') =
+                      fold (fn arg => fn (ps, gs, pre, vs) =>
+                        let val (p, g, pr, vs') = pattern_of_iterm vs arg
+                        in (p :: ps, gs @ g, pre @ pr, vs') end)
+                      args ([], [], [], vars)
+                    val ps = rev rev_ps
+                  in 
+                    if sym = Constant "Product_Type.Pair"
+                    then (PTuple ps, guards, preamble, vars')
+                    else (PClass (deresolve sym, ps), guards, preamble, vars')
+                  end
+              | NONE => error "bad term in pattern")
+          | (depth, base) =>
+            let
+              val [cname] = Name.invent (snd vars) "c" 1
+              val vars1 = intro_vars [cname] vars
+            in
+              case base of
+                IVar NONE =>
+                  let val guard = GRaw (concat
+                    [Pretty.str cname, Pretty.str ">=", Pretty.str (string_of_int depth)])
+                  in (PCapture cname, [guard], [], vars1) end
+              | IVar (SOME v) =>
+                let
+                  val vars2 = intro_vars [v] vars1
+                  val guard = GRaw (concat
+                    [Pretty.str cname, Pretty.str ">=", Pretty.str (string_of_int depth)])
+                  val bind = Pretty.block [Pretty.str (lookup_var vars2 v), Pretty.str " = (",
+                    Pretty.str cname, Pretty.str " - ", Pretty.str (string_of_int depth), Pretty.str ")"]
+                in (PCapture cname, [guard], [bind], vars2) end
+              | IConst { sym, ... } =>
+                if sym = Constant "Nat.zero_nat_inst.zero_nat"
+                then
+                  let val guard = GRaw (concat
+                    [Pretty.str cname, Pretty.str "==", Pretty.str (string_of_int depth)])
+                  in (PCapture cname, [guard], [], vars1) end
+                else error "unsupported base of nat Suc-chain pattern"
+              | _ => error "unsupported base of nat Suc-chain pattern"
+            end);
 
     fun print_python_pattern (PCapture v) = Pretty.str v
       | print_python_pattern PWild = Pretty.str "_"
@@ -132,21 +171,23 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
     fun print_guard tyvars some_thm vars [] = NONE
       | print_guard tyvars some_thm vars guards =
         guards
-        |> map (fn (name, t) => concat
-          [Pretty.str name, Pretty.str "==",
-           print_python_expr const_syntax tyvars some_thm vars NOBR t])
+        |> map (fn GEq (name, t) => concat
+                  [Pretty.str name, Pretty.str "==",
+                  print_python_expr const_syntax tyvars some_thm vars NOBR t]
+                | GRaw p => p)
         |> separate (Pretty.str "and")
         |> concat |> SOME
 
     and print_case_arm tyvars some_thm vars (pattern, body_pretty) =
       let
-        val (p, guards, vars') = pattern_of_iterm vars pattern
+        val (p, guards, preamble, vars') = pattern_of_iterm vars pattern
         val header = case print_guard tyvars some_thm vars' guards of
             NONE => concat [Pretty.str "case", 
               print_python_pattern p, Pretty.str ":"]
           | SOME guard => concat [Pretty.str "case", print_python_pattern p, 
               Pretty.str "if", guard, Pretty.str ":"]
-      in (header, vars', body_pretty vars') end
+        val body = Pretty.chunks (preamble @ [body_pretty vars'])
+      in (header, vars', body) end
   
     and print_pattern_match tyvars some_thm vars target clauses =
       let
@@ -396,19 +437,21 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
                 else Pretty.enum "," "(" ")" (map Pretty.str param_names)
               fun print_one_equation ((targets, t), (some_thm, _)) =
                 let
-                  val (sub_patterns, guards, vars') =
-                    fold (fn pat => fn (ps, gs, vs) =>
-                      let val (p, g, vs') = pattern_of_iterm vs pat
-                      in (ps @ [p], gs @ g, vs') end)
-                    targets ([], [], vars2)
+                  val (sub_patterns, guards, preamble, vars') =
+                    fold (fn pat => fn (ps, gs, pre, vs) =>
+                      let val (p, g, pr, vs') = pattern_of_iterm vs pat
+                      in (ps @ [p], gs @ g, pre @ pr, vs') end)
+                    targets ([], [], [], vars2)
                   val pattern_pretty = if length sub_patterns = 1
                     then print_python_pattern (hd sub_patterns)
                     else Pretty.enum "," "(" ")" (map print_python_pattern sub_patterns)
                   val header = case print_guard tyvars some_thm vars' guards of
                       NONE => Pretty.block [Pretty.str "case ", pattern_pretty, Pretty.str ":"]
                     | SOME guard => Pretty.block
-                        [Pretty.str "case ", pattern_pretty, Pretty.str "if (", guard, Pretty.str "):"]
-                in Pretty.chunks [header, indent_block 4 (print_rhs some_thm vars' t)] end
+                        [Pretty.str "case ", pattern_pretty, Pretty.str " if (", guard, Pretty.str "):"]
+                in Pretty.chunks [header,
+                    indent_block 4 (Pretty.chunks (preamble @ [print_rhs some_thm vars' t]))]
+                end
               val fallthrough = Pretty.chunks
                 [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
                 indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")]

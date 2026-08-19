@@ -17,4 +17,5 @@ session Python_Examples in "examples" = Python +
     Example_tuples
     Example_int_arith
     Example_nat
+    Example_nat_pattern
   export_files (in "../python_out") "*:**"
