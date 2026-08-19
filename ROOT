@@ -14,4 +14,7 @@ session Python_Examples in "examples" = Python +
     Example_lists
     Example_super
     Example_super_chain
+    Example_tuples
+    Example_int_arith
+    Example_nat
   export_files (in "../python_out") "*:**"

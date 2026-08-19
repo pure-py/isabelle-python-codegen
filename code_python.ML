@@ -80,6 +80,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         PCapture of string
       | PWild
       | PClass of string * python_pattern list
+      | PTuple of python_pattern list
       | PLiteral of Pretty.T;
     
     fun pattern_of_iterm 
@@ -103,12 +104,18 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             in (PCapture name, [(name, t)], vars') end
       | pattern_of_iterm vars t = (case Code_Thingol.unfold_const_app t of
             SOME ({ sym, ... }, args) =>
-              let val (rev_ps, guards, vars') =
-                fold (fn arg => fn (ps, gs, vs) =>
-                  let val (p, g, vs') = pattern_of_iterm vs arg
-                  in (p :: ps, gs @ g, vs') end)
-                args ([], [], vars)
-              in (PClass (deresolve sym, rev rev_ps), guards, vars') end
+              let 
+                val (rev_ps, guards, vars') =
+                  fold (fn arg => fn (ps, gs, vs) =>
+                    let val (p, g, vs') = pattern_of_iterm vs arg
+                    in (p :: ps, gs @ g, vs') end)
+                  args ([], [], vars)
+                val ps = rev rev_ps
+              in 
+                if sym = Constant "Product_Type.Pair"
+                then (PTuple ps, guards, vars')
+                else (PClass (deresolve sym, rev rev_ps), guards, vars')
+              end
           | NONE => error "bad term in pattern");
 
     fun print_python_pattern (PCapture v) = Pretty.str v
@@ -116,6 +123,8 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       | print_python_pattern (PLiteral p) = p
       | print_python_pattern (PClass (name, [])) =
           Pretty.block [Pretty.str name, Pretty.str "()"]
+      | print_python_pattern (PTuple ps) =
+          Pretty.enum "," "(" ")" (map print_python_pattern ps)
       | print_python_pattern (PClass (name, ps)) =
           Pretty.block [Pretty.str name, 
             Pretty.enum "," "(" ")" (map print_python_pattern ps)];

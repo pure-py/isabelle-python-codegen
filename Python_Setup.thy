@@ -44,6 +44,16 @@ setup \<open>
 (* Integers *)
 code_printing
     type_constructor Int.int \<rightharpoonup> (Python) "int"
+  | constant "0 :: int" \<rightharpoonup> (Python) "0"
+  | constant "(+) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ + _)"
+  | constant "(-) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ - _)"
+  | constant "uminus :: int \<Rightarrow> int" \<rightharpoonup> (Python) "(- _)"
+  | constant "HOL.equal :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
+  | constant "(\<le>) :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _ )"
+  | constant "(<) :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
+  | constant "(*) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ * _)"
+  | constant "(div) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ '/'/ _)"
+  | constant "(mod) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ % _)"
 
 lemma one_int_code [code_unfold]:
   "(1::int) = Int.Pos Num.One"
@@ -56,6 +66,25 @@ setup \<open>
     #> Numeral.add_code \<^const_name>\<open>Int.Neg\<close> (~)
       Code_Printer.literal_numeral target)
     "Python"
+\<close>
+
+(* nats *)
+code_printing
+    type_constructor Nat.nat \<rightharpoonup> (Python) "int"
+  | constant "0 :: nat" \<rightharpoonup> (Python) "0"
+  | constant "1 :: nat" \<rightharpoonup> (Python) "1"
+  | constant Suc \<rightharpoonup> (Python) "(_ + 1)"
+  | constant "(+) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ + _)"
+  | constant "(-) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "max(0, _ - _)"
+  | constant "(*) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ * _)"
+  | constant "(div) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ '/'/ _)"
+  | constant "(mod) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "HOL.equal :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
+  | constant "(\<le>) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
+  | constant "(<) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
+
+setup \<open>
+  Numeral.add_code \<^const_name>\<open>Num.nat_of_num\<close> I Code_Printer.literal_numeral "Python"
 \<close>
 
 (* Lists *)
@@ -91,7 +120,13 @@ setup \<open>
         [(target, SOME (complex_const_syntax (2, pretty)))])))
     "Python"
   end
-
 \<close>
+
+(* Pairs *)
+code_printing
+    type_constructor Product_Type.prod \<rightharpoonup> (Python) "(_ * _)"
+  | constant Product_Type.Pair \<rightharpoonup> (Python) "(_, _)"
+  | constant fst \<rightharpoonup> (Python) "_[0]"
+  | constant snd \<rightharpoonup> (Python) "_[1]"
 
 end
