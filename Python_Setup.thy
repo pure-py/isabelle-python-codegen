@@ -13,6 +13,11 @@ code_identifier
 code_printing
   constant Code.abort \<rightharpoonup> (Python) "raise RuntimeError(\"_\")"
 
+(* unit *)
+code_printing
+    type_constructor Product_Type.unit \<rightharpoonup> (Python) "None"
+  | constant Unity \<rightharpoonup> (Python) "None"
+
 (* Bools *)
 code_printing
   type_constructor bool \<rightharpoonup> (Python) "bool"

@@ -63,7 +63,7 @@ fun indent_block n p = Pretty.indent n p;
  *   deresolve: module relative naming resolver
  *)
 fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
-    is_sum_type is_class_param is_value is_constr (deresolve, _) =
+    is_sum_type is_class_param is_value is_constr ctxt (deresolve, _) =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
@@ -315,12 +315,27 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
 
     fun print_python_typedef tyco vs cos reserved =
       let
+        val thy = Proof_Context.theory_of ctxt
+        val field_names = 
+          case Record.get_info thy (Long_Name.qualifier tyco) of
+              SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
+            | NONE => NONE
         fun print_constructor ((name, _), tys) =
           let
-            val ctxt = Name.declare "self" (snd reserved)
-            val named_fields = Name.invent_names ctxt "a" tys
-            val fields = named_fields
-              |> map (fn (fname, _) => Pretty.str (fname ^ ": Any"))
+            val name_ctxt = Name.declare "self" (snd reserved)
+            val named_fields = Name.invent_names name_ctxt "a" tys
+            val labels = 
+              case field_names of
+                  SOME names =>
+                    if length names <= length named_fields
+                    then names @ (case length named_fields - length names of
+                          0 => []
+                        | 1 => ["more"]
+                        | n => "more" :: List.tabulate (n - 1, fn i => "more" ^ string_of_int (i + 2)))
+                    else map fst named_fields
+                | NONE => map fst named_fields
+            val fields = labels
+              |> map (fn fname => Pretty.str (fname ^ ": Any"))
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
              Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
@@ -563,7 +578,7 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
              | (_, SOME (export, stmt)) => SOME
               (print_python_stmt undefineds tyco_syntax const_syntax (make_vars reserved_syms)
                 args_num is_sum_type is_class_param is_value
-                (Code_Thingol.is_constr program) (deresolver mod_name, deresolver)
+                (Code_Thingol.is_constr program) ctxt (deresolver mod_name, deresolver)
                 (sym, (export, python_stmt_of_thingol stmt))));
         in
           (mod_name, imports, stmt_ps) end)
