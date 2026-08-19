@@ -198,9 +198,8 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"]
         fun one_arm (pattern, term) =
           let
-            val (header, vars', _) = print_case_arm tyvars some_thm vars0
+            val (header, vars', body) = print_case_arm tyvars some_thm vars0
               (pattern, fn vars' => print_python_term const_syntax tyvars some_thm vars' NOBR term)
-            val body = print_python_term const_syntax tyvars some_thm vars' NOBR term
           in Pretty.chunks [header, indent_block 4 body] end
         val fallthrough = Pretty.chunks
           [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
@@ -245,8 +244,11 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           end
       | ICase { clauses = [], ... } => Pretty.str "raise RuntimeError(\"empty case\")"
       | ICase (cases as { term = target, clauses, ... }) =>
-          wrap_if (not is_stmt) (print_pattern_match tyvars some_thm vars target clauses)
-          (* TODO: this might need hoisting too *)
+          print_pattern_match tyvars some_thm vars target clauses
+          (* TODO: this only supports ICase as a whole function body or a whole
+            match-arm body (see print_python_func and one_arm) -- a case
+            expression genuinely nested inside a larger surrounding expression
+            still needs statement-hoisting *)
     
     (* For thinks like lambdas we need to decide if the body is an expression *)
     and is_stmt_free (ICase _) = false
@@ -438,11 +440,14 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           if simple
           then
             let val ((_, t), (some_thm, _)) = hd eqs
-            in 
+            in
               if is_value
               then Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
-                print_python_expr const_syntax tyvars some_thm vars2 NOBR t, Pretty.str ")"]
-              else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] 
+                    print_python_expr const_syntax tyvars some_thm vars2 NOBR t, Pretty.str ")"]
+              else case t of
+                  ICase { term = target, clauses, ... } =>
+                    Pretty.chunks [head, indent_block 4 (print_pattern_match tyvars some_thm vars2 target clauses)]
+                | _ => Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
             end
           else
             let 
