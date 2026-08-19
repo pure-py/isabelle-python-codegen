@@ -368,15 +368,15 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
               (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
             Pretty.str ":"]
           fun print_rhs some_thm vars t = Pretty.block
-            [Pretty.str "return ", print_python_expr const_syntax tyvars some_thm vars NOBR t]
+            [Pretty.str "return (", print_python_expr const_syntax tyvars some_thm vars NOBR t, Pretty.str ")"]
         in
           if simple
           then
             let val ((_, t), (some_thm, _)) = hd eqs
             in 
               if is_value
-              then concat [Pretty.str (deresolve_const const), Pretty.str "=",
-                print_python_expr const_syntax tyvars some_thm vars2 NOBR t]
+              then Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
+                print_python_expr const_syntax tyvars some_thm vars2 NOBR t, Pretty.str ")"]
               else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] 
             end
           else
@@ -398,7 +398,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
                   val header = case print_guard tyvars some_thm vars' guards of
                       NONE => Pretty.block [Pretty.str "case ", pattern_pretty, Pretty.str ":"]
                     | SOME guard => Pretty.block
-                        [Pretty.str "case ", pattern_pretty, Pretty.str "if", guard, Pretty.str ":"]
+                        [Pretty.str "case ", pattern_pretty, Pretty.str "if (", guard, Pretty.str "):"]
                 in Pretty.chunks [header, indent_block 4 (print_rhs some_thm vars' t)] end
               val fallthrough = Pretty.chunks
                 [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
