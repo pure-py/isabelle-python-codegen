@@ -528,6 +528,13 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
 fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
     identifiers, includes, class_syntax, tyco_syntax, const_syntax } program exports =
   let
+    val program =
+      Code_Symbol.Graph.restrict
+        (fn sym => case sym of
+            Constant c => is_none (const_syntax c)
+          | _ => true)
+        program;
+        
     val { deresolver, flat_program = python_program } =
       python_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;

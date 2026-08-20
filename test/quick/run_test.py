@@ -99,6 +99,23 @@ def test_nat_countdown():
     assert m.n_countdown(0) == [0]
     assert m.n_countdown_4 == [4, 3, 2, 1, 0]
 
+# ---- int/nat remaining operators ----
+
+def test_int_abs():
+    assert m.i_abs_neg == 7
+
+def test_int_sgn():
+    assert m.i_sgn_neg == -1
+    assert m.i_sgn_zero == 0
+    assert m.i_sgn_pos == 1
+
+def test_int_min_max():
+    assert m.i_min_ab == 3
+    assert m.i_max_ab == 9
+
+def test_nat_min_max():
+    assert m.n_min_ab == 3
+    assert m.n_max_ab == 9
 
 # ---- records, including extension ----
 

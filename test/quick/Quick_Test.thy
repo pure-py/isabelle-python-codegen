@@ -44,6 +44,18 @@ fun n_countdown :: "nat \<Rightarrow> nat list" where
 
 definition n_countdown_4 :: "nat list" where "n_countdown_4 = n_countdown 4"
 
+section \<open>remaining int/nat operators\<close>
+
+definition i_abs_neg :: int where "i_abs_neg = abs (-7::int)"
+definition i_sgn_neg :: int where "i_sgn_neg = sgn (-7::int)"
+definition i_sgn_zero :: int where "i_sgn_zero = sgn (0::int)"
+definition i_sgn_pos :: int where "i_sgn_pos = sgn (7::int)"
+definition i_min_ab :: int where "i_min_ab = min (3::int) 9"
+definition i_max_ab :: int where "i_max_ab = max (3::int) 9"
+ 
+definition n_min_ab :: nat where "n_min_ab = min (3::nat) 9"
+definition n_max_ab :: nat where "n_max_ab = max (3::nat) 9"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -97,6 +109,8 @@ export_code
   i_quotient_neg i_remainder_neg i_checksum
   n_sub_trunc n_sub_pos n_literal
   n_fact n_fact_5 n_countdown n_countdown_4
+  i_abs_neg i_sgn_neg i_sgn_zero i_sgn_pos 
+  i_min_ab i_max_ab n_min_ab n_max_ab
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   in Python file_prefix "."

@@ -60,6 +60,11 @@ code_printing
   | constant "(div) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ '/'/ _)"
   | constant "(mod) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ % _)"
 
+code_printing
+    constant "abs :: int \<Rightarrow> int" \<rightharpoonup> (Python) "abs'(_')"
+  | constant "min" \<rightharpoonup> (Python) "min(_, _)"
+  | constant "max" \<rightharpoonup> (Python) "max(_, _)"
+
 lemma one_int_code [code_unfold]:
   "(1::int) = Int.Pos Num.One"
   by simp
@@ -71,6 +76,22 @@ setup \<open>
     #> Numeral.add_code \<^const_name>\<open>Int.Neg\<close> (~)
       Code_Printer.literal_numeral target)
     "Python"
+\<close>
+
+setup \<open>
+  let
+    open Code_Thingol Code_Printer;
+
+    fun pretty literals print_term thm vars fxy [(x, _)] =
+      let val p = print_term vars NOBR x
+      in Pretty.block [Pretty.str "((", p, Pretty.str " > 0) - (", p, Pretty.str " < 0))"] end;
+
+  in
+    (fn target =>
+      Code_Target.set_printings (Code_Symbol.Constant (\<^const_name>\<open>Int.sgn_int_inst.sgn_int\<close>,
+        [(target, SOME (complex_const_syntax (1, pretty)))])))
+    "Python"
+  end
 \<close>
 
 (* nats *)
