@@ -84,6 +84,13 @@ fun weird :: "nat \<Rightarrow> nat" where
 definition weird_zero :: nat where "weird_zero = weird 0"
 definition weird_five :: nat where "weird_five = weird 5"
 
+section \<open>list pattern matching\<close>
+
+fun describe_len :: "nat list \<Rightarrow> nat" where
+  "describe_len xs = Suc (case xs of [] \<Rightarrow> 0 | (_ # ys) \<Rightarrow> length ys)"
+
+definition describe_len_123 :: nat where "describe_len_123 = describe_len [1, 2, 3]"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -143,6 +150,7 @@ export_code
   abs_manual abs_manual_neg abs_manual_pos
   classify classify_zero classify_other
   weird weird_zero weird_five
+  describe_len describe_len_123
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   in Python file_prefix "."

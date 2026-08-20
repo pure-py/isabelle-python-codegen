@@ -117,6 +117,9 @@ setup \<open>
 code_printing
     type_constructor List.list \<rightharpoonup> (Python) "_ list"
   | constant List.list.Nil \<rightharpoonup> (Python) "[]"
+  
+code_printing
+  constant "length" \<rightharpoonup> (Python) "len'(_')"
 
 setup \<open>
   let

@@ -150,6 +150,15 @@ def test_if_then_else_branch_with_nested_case():
     assert m.weird_five == 25
 
 
+# ---- list pattern matching ----
+
+def test_list_pattern_matching():
+    # describe_len xs = Suc (case xs of [] => 0 | (_ # ys) => length ys)
+    assert m.describe_len([]) == 1
+    assert m.describe_len([1, 2, 3]) == 3
+    assert m.describe_len_123 == 3
+
+
 # ---- records, including extension ----
 
 def test_record_extension_roundtrip():
