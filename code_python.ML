@@ -203,8 +203,35 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             val vars' = intro_vars [x] vars;
           in ([(x, t)], vars', IVar (SOME x)) end
 
+    and print_if_then_else tyvars some_thm finish vars target t_branch e_branch =
+      let
+        val (target_bindings, vars1, target') = anf_term vars target;
+        val cond = print_python_expr const_syntax tyvars some_thm vars1 NOBR target';
+      in
+        Pretty.chunks (map (print_binding tyvars some_thm vars1) target_bindings @
+          [Pretty.block [Pretty.str "if ", cond, Pretty.str ":"],
+           indent_block 4 (print_tail_expr tyvars some_thm finish vars1 t_branch),
+           Pretty.str "else:",
+           indent_block 4 (print_tail_expr tyvars some_thm finish vars1 e_branch)])
+      end
+
+    and get_if_then_else [(p1, t1), (p2, t2)] =
+          let
+            fun is_true (IConst { sym = Constant "HOL.True", ... }) = true
+              | is_true _ = false;
+            fun is_false (IConst { sym = Constant "HOL.False", ... }) = true
+              | is_false _ = false;
+          in
+            if is_true p1 andalso is_false p2 then SOME (t1, t2)
+            else if is_false p1 andalso is_true p2 then SOME (t2, t1)
+            else NONE
+          end
+      | get_if_then_else _ = NONE
+
     and print_tail_expr tyvars some_thm finish vars (ICase { term = target, clauses, ... }) =
-          print_case_block tyvars some_thm finish vars target clauses
+        (case get_if_then_else clauses of
+          SOME (t_branch, e_branch) => print_if_then_else tyvars some_thm finish vars target t_branch e_branch
+        | NONE => print_case_block tyvars some_thm finish vars target clauses)
       | print_tail_expr tyvars some_thm finish vars t =
           let val (bindings, vars', t') = anf_term vars t
           in Pretty.chunks (map (print_binding tyvars some_thm vars') bindings @ [finish vars' t']) end

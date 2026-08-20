@@ -175,6 +175,15 @@ extension, and typeclass/superclass method dispatch.
   to that temporary instead. This is a pure term-to-term rewrite done before
   printing, not a mutable/side-effecting pass, and it composes correctly for
   arbitrarily nested case-within-case expressions.
+- `if ... then ... else ...` is recognized specially rather than falling
+  through to the generic case-matching machinery it desugars to internally
+  (HOL represents it as a two-armed case on `bool`'s `True`/`False`
+  constructors). It prints as a native Python `if`/`else`, whether it's the
+  whole body of a definition, nested inside a larger expression, or has a
+  branch that itself contains further nested pattern matching — in the
+  latter case the nested match is hoisted only as far as that branch's own
+  `if`/`else` block, so it's only evaluated when that branch is actually
+  taken, matching HOL's non-strict `if`/`then`/`else` semantics.
 - Every site where Pretty-printing could otherwise silently line-wrap a
   bare `return`/assignment across multiple lines and produce invalid
   Python is guarded with explicit parentheses.

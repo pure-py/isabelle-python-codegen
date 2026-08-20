@@ -64,6 +64,26 @@ fun nat_label :: "nat \<Rightarrow> nat" where
 definition label_zero :: nat where "label_zero = nat_label 0"
 definition label_five :: nat where "label_five = nat_label 5"
 
+section \<open>if/then/else\<close>
+ 
+definition abs_manual :: "int \<Rightarrow> int" where
+  "abs_manual x = (if x < 0 then -x else x)"
+ 
+definition abs_manual_neg :: int where "abs_manual_neg = abs_manual (-7)"
+definition abs_manual_pos :: int where "abs_manual_pos = abs_manual 7"
+ 
+definition classify :: "nat \<Rightarrow> nat" where
+  "classify n = 1 + (if n = 0 then 100 else 200)"
+ 
+definition classify_zero :: nat where "classify_zero = classify 0"
+definition classify_other :: nat where "classify_other = classify 5"
+ 
+fun weird :: "nat \<Rightarrow> nat" where
+  "weird n = (if n = 0 then 1 else 1 + (case n of 0 \<Rightarrow> 10 | Suc m \<Rightarrow> 20 + m))"
+ 
+definition weird_zero :: nat where "weird_zero = weird 0"
+definition weird_five :: nat where "weird_five = weird 5"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -120,6 +140,9 @@ export_code
   i_abs_neg i_sgn_neg i_sgn_zero i_sgn_pos 
   i_min_ab i_max_ab n_min_ab n_max_ab
   nat_label label_zero label_five
+  abs_manual abs_manual_neg abs_manual_pos
+  classify classify_zero classify_other
+  weird weird_zero weird_five
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   in Python file_prefix "."

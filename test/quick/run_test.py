@@ -128,6 +128,28 @@ def test_nested_case_expression():
     assert m.nat_label(5) == 25
 
 
+# ---- if/then/else ----
+ 
+def test_if_then_else_whole_body():
+    # abs_manual x = if x < 0 then -x else x
+    assert m.abs_manual_neg == 7
+    assert m.abs_manual_pos == 7
+    assert m.abs_manual(-7) == 7
+    assert m.abs_manual(7) == 7
+ 
+ 
+def test_if_then_else_nested_in_expression():
+    # classify n = 1 + (if n = 0 then 100 else 200)
+    assert m.classify_zero == 101
+    assert m.classify_other == 201
+ 
+ 
+def test_if_then_else_branch_with_nested_case():
+    # weird n = if n = 0 then 1 else 1 + (case n of 0 => 10 | Suc m => 20 + m)
+    assert m.weird_zero == 1
+    assert m.weird_five == 25
+
+
 # ---- records, including extension ----
 
 def test_record_extension_roundtrip():
