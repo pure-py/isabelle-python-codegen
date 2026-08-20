@@ -534,7 +534,7 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
             Constant c => is_none (const_syntax c)
           | _ => true)
         program;
-        
+
     val { deresolver, flat_program = python_program } =
       python_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;
@@ -579,21 +579,78 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
 
     val module_names = Graph.keys python_program;
 
-    val module_stmts = module_names
+    (* First pass: print every statement, but tag whether it's a Classinst and
+      what its own deresolved name is, so we can do liveness analysis afterward. *)
+    val module_stmts_raw = module_names
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
-          val stmt_ps = Code_Symbol.Graph.topological_order stmt_gr
-            |> rev  (* not sure why we need to reverse here *)
+          val entries = Code_Symbol.Graph.topological_order stmt_gr
+            |> rev
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
-            of (_, NONE) => NONE
-             | (_, SOME (export, stmt)) => SOME
-              (print_python_stmt undefineds tyco_syntax const_syntax (make_vars reserved_syms)
-                args_num is_sum_type is_class_param is_value
-                (Code_Thingol.is_constr program) ctxt (deresolver mod_name, deresolver)
-                (sym, (export, python_stmt_of_thingol stmt))));
-        in
-          (mod_name, imports, stmt_ps) end)
+              of (_, NONE) => NONE
+              | (_, SOME (export, stmt)) =>
+                  let
+                    val is_classinst = case stmt of Code_Thingol.Classinst _ => true | _ => false;
+                    val pretty =
+                      print_python_stmt undefineds tyco_syntax const_syntax
+                        (make_vars reserved_syms) args_num is_sum_type is_class_param is_value
+                        (Code_Thingol.is_constr program) ctxt (deresolver mod_name, deresolver)
+                        (sym, (export, python_stmt_of_thingol stmt));
+                    val own_name = deresolver mod_name sym;
+                  in SOME (sym, is_classinst, own_name, pretty) end);
+        in (mod_name, imports, entries) end);
+
+    val all_entries = maps (fn (_, _, entries) => entries) module_stmts_raw;
+
+    fun text_of pretty = Pretty.unformatted_string_of pretty;
+
+    (* Whole-identifier substring match: avoids "ord_int" matching inside
+      some longer identifier like "ord_int2". *)
+    fun is_word_ref name text =
+      let
+        val n = size name;
+        fun is_ident_char c = Char.isAlphaNum c orelse c = #"_";
+        fun scan i =
+          if i + n > size text then false
+          else
+            let
+              val before_ok = i = 0 orelse not (is_ident_char (String.sub (text, i - 1)));
+              val after_ok = i + n = size text orelse not (is_ident_char (String.sub (text, i + n)));
+            in
+              if before_ok andalso after_ok andalso String.substring (text, i, n) = name
+              then true else scan (i + 1)
+            end;
+      in scan 0 end;
+
+    fun classinst_used entries (sym, name) =
+      exists (fn (sym', _, _, pretty') =>
+        not (sym' = sym) andalso is_word_ref name (text_of pretty'))
+        entries;
+
+    (* Iteratively drop Classinst statements whose own name is never referenced
+      anywhere else, re-checking after each removal since dropping one instance
+      can make another (e.g. a superclass instance it alone depended on) dead too. *)
+    fun eliminate entries =
+      let
+        val (classinsts, others) = List.partition (fn (_, is_ci, _, _) => is_ci) entries;
+        val (dead, alive) = List.partition
+          (fn (sym, _, name, _) => not (classinst_used entries (sym, name)))
+          classinsts;
+      in
+        if null dead then entries else eliminate (others @ alive)
+      end;
+
+    val all_entries_final = eliminate all_entries;
+    val kept_syms = map (fn (sym, _, _, _) => sym) all_entries_final;
+
+    val module_stmts = module_stmts_raw
+      |> map (fn (mod_name, imports, entries) =>
+        let
+          val stmt_ps = entries
+            |> filter (fn (sym, _, _, _) => member (op =) kept_syms sym)
+            |> map (fn (_, _, _, pretty) => pretty);
+        in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
 
     val nonempty_names = map #1 module_stmts;
