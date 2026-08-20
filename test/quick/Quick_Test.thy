@@ -139,6 +139,24 @@ end
 definition cls_default_b :: int where "cls_default_b = default_val TagB"
 definition cls_double_a :: int where "cls_double_a = double_val TagA"
 
+text \<open>
+  A dictionary-parameterized instance: has_default for 'a list requires
+  'a's own has_default dictionary as a constructor argument, exercising
+  the fix to print_dict_args for Class_Instance printing (previously this
+  silently dropped the dictionary parameter and warned instead).
+\<close>
+
+instantiation list :: (has_default) has_default
+begin
+definition default_val_list :: "'a list \<Rightarrow> int" where
+  "default_val_list xs = (case xs of [] \<Rightarrow> 0 | (y # ys) \<Rightarrow> default_val y)"
+instance ..
+end
+
+definition cls_list_default :: int where "cls_list_default = default_val [TagB, TagA]"
+definition cls_list_default_empty :: int where
+  "cls_list_default_empty = default_val ([] :: tag list)"
+
 export_code
   t_point t_swap t_add_points t_points_sum
   i_quotient_neg i_remainder_neg i_checksum
@@ -153,6 +171,7 @@ export_code
   describe_len describe_len_123
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
+  cls_list_default cls_list_default_empty
   in Python file_prefix "."
 
 end

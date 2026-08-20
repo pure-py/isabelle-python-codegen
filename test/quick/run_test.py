@@ -171,3 +171,12 @@ def test_record_extension_roundtrip():
 def test_typeclass_dispatch():
     assert m.cls_default_b == 2   # default_val TagB
     assert m.cls_double_a == 2    # double_val TagA = 2 * default_val TagA (=1)
+
+
+# ---- dictionary-parameterized instance ----
+
+def test_dict_parameterized_instance():
+    # has_default 'a list requires 'a's own has_default dictionary --
+    # exercises print_dict_args for Class_Instance printing.
+    assert m.cls_list_default == 2        # default_val TagB (first elem of [TagB, TagA])
+    assert m.cls_list_default_empty == 0
