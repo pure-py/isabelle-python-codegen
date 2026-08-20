@@ -189,25 +189,51 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         val body = Pretty.chunks (preamble @ [body_pretty vars'])
       in (header, vars', body) end
   
-    and print_pattern_match tyvars some_thm vars target clauses =
+    and anf_term vars (t as IConst _) = ([], vars, t)
+      | anf_term vars (t as IVar _) = ([], vars, t)
+      | anf_term vars (t1 `$ t2) =
+          let
+            val (b1, vars1, t1') = anf_term vars t1;
+            val (b2, vars2, t2') = anf_term vars1 t2;
+          in (b1 @ b2, vars2, t1' `$ t2') end
+      | anf_term vars (t as (_, _) `|=> (_, _)) = ([], vars, t)
+      | anf_term vars (t as ICase _) =
+          let
+            val [x] = Name.invent (snd vars) "x" 1;
+            val vars' = intro_vars [x] vars;
+          in ([(x, t)], vars', IVar (SOME x)) end
+
+    and print_tail_expr tyvars some_thm finish vars (ICase { term = target, clauses, ... }) =
+          print_case_block tyvars some_thm finish vars target clauses
+      | print_tail_expr tyvars some_thm finish vars t =
+          let val (bindings, vars', t') = anf_term vars t
+          in Pretty.chunks (map (print_binding tyvars some_thm vars') bindings @ [finish vars' t']) end
+
+    and print_binding tyvars some_thm vars (name, t) =
+      print_tail_expr tyvars some_thm
+        (fn vars' => fn t' => Pretty.block [Pretty.str name, Pretty.str " = (",
+          print_python_expr const_syntax tyvars some_thm vars' NOBR t', Pretty.str ")"])
+        vars t
+
+    and print_case_block tyvars some_thm finish vars target clauses =
       let
-        val [tvar] = Name.invent (snd vars) "target" 1
-        val vars0 = intro_vars [tvar] vars
+        val (target_bindings, vars1, target') = anf_term vars target;
+        val [tvar] = Name.invent (snd vars1) "target" 1;
+        val vars0 = intro_vars [tvar] vars1;
         val assign = concat [Pretty.str tvar, Pretty.str "=",
-          print_python_expr const_syntax tyvars some_thm vars NOBR target]
-        val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"]
+          print_python_expr const_syntax tyvars some_thm vars1 NOBR target'];
+        val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =
           let
             val (header, vars', body) = print_case_arm tyvars some_thm vars0
-              (pattern, fn vars' => print_python_term const_syntax tyvars some_thm vars' NOBR term)
-          in Pretty.chunks [header, indent_block 4 body] end
+              (pattern, fn vars' => print_tail_expr tyvars some_thm finish vars' term)
+          in Pretty.chunks [header, indent_block 4 body] end;
         val fallthrough = Pretty.chunks
           [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
-           indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")]
-        in
-          (* TODO: We should probably check if we need the fallthrough here *)
-          Pretty.chunks [assign, match_head,
-            indent_block 4 (Pretty.chunks (map one_arm clauses @ [fallthrough]))]
+           indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")];
+      in
+        Pretty.chunks (map (print_binding tyvars some_thm vars1) target_bindings @
+          [assign, match_head, indent_block 4 (Pretty.chunks (map one_arm clauses @ [fallthrough]))])
       end
 
     and print_python_term const_syntax tyvars some_thm vars fxy t =
@@ -244,11 +270,10 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           end
       | ICase { clauses = [], ... } => Pretty.str "raise RuntimeError(\"empty case\")"
       | ICase (cases as { term = target, clauses, ... }) =>
-          print_pattern_match tyvars some_thm vars target clauses
-          (* TODO: this only supports ICase as a whole function body or a whole
-            match-arm body (see print_python_func and one_arm) -- a case
-            expression genuinely nested inside a larger surrounding expression
-            still needs statement-hoisting *)
+          if is_stmt
+          then print_case_block tyvars some_thm (fn vars' => fn t' => 
+            print_python_expr const_syntax tyvars some_thm vars' NOBR t') vars target clauses
+          else error "internal error: ICase reached in expression position -- anf_term should have extracted it"
     
     (* For thinks like lambdas we need to decide if the body is an expression *)
     and is_stmt_free (ICase _) = false
@@ -434,21 +459,23 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             Pretty.enum "," "(" ")"
               (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
             Pretty.str ":"]
-          fun print_rhs some_thm vars t = Pretty.block
-            [Pretty.str "return (", print_python_expr const_syntax tyvars some_thm vars NOBR t, Pretty.str ")"]
+          fun print_rhs some_thm vars t =
+            print_tail_expr tyvars some_thm
+              (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
+                print_python_expr const_syntax tyvars some_thm vars' NOBR t', Pretty.str ")"])
+              vars t
         in
           if simple
           then
             let val ((_, t), (some_thm, _)) = hd eqs
             in
-              if is_value
-              then Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
-                    print_python_expr const_syntax tyvars some_thm vars2 NOBR t, Pretty.str ")"]
-              else case t of
-                  ICase { term = target, clauses, ... } =>
-                    Pretty.chunks [head, indent_block 4 (print_pattern_match tyvars some_thm vars2 target clauses)]
-                | _ => Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
-            end
+            if is_value
+            then print_tail_expr tyvars some_thm
+              (fn vars' => fn t' => Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
+                print_python_expr const_syntax tyvars some_thm vars' NOBR t', Pretty.str ")"])
+              vars2 t
+            else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
+          end
           else
             let 
               val param_names = map_filter (Option.map (lookup_var vars2)) params

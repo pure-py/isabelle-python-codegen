@@ -56,6 +56,14 @@ definition i_max_ab :: int where "i_max_ab = max (3::int) 9"
 definition n_min_ab :: nat where "n_min_ab = min (3::nat) 9"
 definition n_max_ab :: nat where "n_max_ab = max (3::nat) 9"
 
+section \<open>nested case expressions\<close>
+ 
+fun nat_label :: "nat \<Rightarrow> nat" where
+  "nat_label n = 1 + (case n of 0 \<Rightarrow> 10 | Suc m \<Rightarrow> 20 + m)"
+ 
+definition label_zero :: nat where "label_zero = nat_label 0"
+definition label_five :: nat where "label_five = nat_label 5"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -111,6 +119,7 @@ export_code
   n_fact n_fact_5 n_countdown n_countdown_4
   i_abs_neg i_sgn_neg i_sgn_zero i_sgn_pos 
   i_min_ab i_max_ab n_min_ab n_max_ab
+  nat_label label_zero label_five
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   in Python file_prefix "."

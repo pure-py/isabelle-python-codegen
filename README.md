@@ -100,7 +100,7 @@ extension, and typeclass/superclass method dispatch.
 ## What the generator currently supports
 
 **Numerics**
-
+ 
 - `int`: numeral literals print as native Python integers; `+`, `-`
   (binary and unary), `*`, `div`/`mod` (as `//`/`%`, matching HOL's
   flooring semantics), and `=`/`≤`/`<` all print as native Python
@@ -112,6 +112,16 @@ extension, and typeclass/superclass method dispatch.
   recursion) compiles to a guarded capture pattern with the predecessor
   bound via an explicit statement (e.g. `case c if (c >= 1): n = (c - 1)`),
   since Python has no runtime `Suc` constructor to match against.
+- `abs`, `min`, `max` print as the native Python builtins (`abs(_)`,
+  `min(_, _)`, `max(_, _)`) for both `int` and `nat`. `sgn` (currently
+  `int` only) prints as `((x > 0) - (x < 0))`, relying on Python's
+  `bool`-as-`int` coercion to get `-1`/`0`/`1` without needing a helper
+  function. Because these are genuinely typeclass-polymorphic constants
+  (defined once via `ord`, not per-type like `+`/`-`/`*`), using them
+  pulls in an unused per-type dictionary object (e.g. `ord_int`) as a
+  side effect of how the code lives internally — a dead-code elimination
+  pass strips these back out of the generated module before it's written,
+  so nothing unused ends up in the output.
 
 **Strings**
 
@@ -156,6 +166,15 @@ extension, and typeclass/superclass method dispatch.
   datatypes).
 - An explicit `case ... of ...` expression used as a whole definition body
   (as opposed to `fun`-style clauses) also compiles correctly.
+- A `case ... of ...` expression *nested inside* a larger surrounding
+  expression (e.g. `1 + (case n of 0 ⇒ 10 | Suc m ⇒ 20 + m)`) also compiles
+  correctly. Since Python's `match` is a statement, not an expression, the
+  generator converts the enclosing right-hand side to A-normal form: the
+  nested case is extracted into a preceding `match` block whose arms assign
+  into a fresh temporary, and the original expression is rewritten to refer
+  to that temporary instead. This is a pure term-to-term rewrite done before
+  printing, not a mutable/side-effecting pass, and it composes correctly for
+  arbitrarily nested case-within-case expressions.
 - Every site where Pretty-printing could otherwise silently line-wrap a
   bare `return`/assignment across multiple lines and produce invalid
   Python is guarded with explicit parentheses.
@@ -169,15 +188,5 @@ extension, and typeclass/superclass method dispatch.
 
 ## Known limitations
 
-- A `case ... of ...` expression nested *inside* a larger surrounding
-  expression (rather than being the whole body of a function or a whole
-  match-arm) isn't hoisted into a helper function yet and won't print
-  correctly — only whole-body and whole-arm case-expressions are handled
-  today.
-- Only the `int`/`nat` operators actually exercised so far have native
-  printing (`+`, `-`, `*`, `div`, `mod`, comparisons). Others such as
-  `abs`, `sgn`, `min`, `max` fall back to HOL's generic typeclass
-  dictionary machinery rather than native Python, and haven't been
-  verified.
 - No support yet for `real`, `rat`, or other numeric types beyond
   `int`/`nat`.

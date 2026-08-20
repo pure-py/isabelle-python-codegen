@@ -20,6 +20,7 @@ session Python_Examples in "examples" = Python +
     Example_nat_pattern
     Example_records
     Example_record_ext
+    Example_nested_case
   export_files (in "../python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +

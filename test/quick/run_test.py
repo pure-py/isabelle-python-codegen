@@ -117,6 +117,17 @@ def test_nat_min_max():
     assert m.n_min_ab == 3
     assert m.n_max_ab == 9
 
+
+# ---- nested case expressions ----
+ 
+def test_nested_case_expression():
+    # nat_label n = 1 + (case n of 0 => 10 | Suc m => 20 + m)
+    assert m.label_zero == 11   # 1 + 10
+    assert m.label_five == 25   # 1 + (20 + 4), since 5 = Suc^5(0), m = 4
+    assert m.nat_label(0) == 11
+    assert m.nat_label(5) == 25
+
+
 # ---- records, including extension ----
 
 def test_record_extension_roundtrip():
