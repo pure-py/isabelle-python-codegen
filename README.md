@@ -134,6 +134,24 @@ extension, and typeclass/superclass method dispatch.
   construction prints directly as a Python list literal; a symbolic tail
   (`x # xs` where `xs` is a variable, not a literal continuation) falls
   back to `[x] + xs` concatenation.
+- Pattern matching *against* `[]`/`x # xs` also prints natively, as Python
+  list-destructuring patterns (`case []:` / `case [x, *xs]:`) rather than
+  falling through to the generic constructor-matching machinery. A chain of
+  `Cons` applications (`x # y # xs`) is flattened into a single pattern
+  with one star-capture for the remaining tail, since Python's `match`
+  only allows one `*name` per list pattern and it can't itself be nested.
+- `map` has a native printer (`list(map(_, _))`, wrapped in `list(...)`
+  since Python's `map` returns a lazy iterator rather than a list). This
+  isn't just a style choice: standard-library list functions whose generic
+  code equations pattern-match on `Nil`/`Cons` internally can silently fail
+  to compile for this target at all, rather than erroring — the dependency
+  graph computation interacts badly with our own `List.Cons`/`List.Nil`
+  `const_syntax` registration, and equation translation fails permissively.
+  Symptom to watch for with any other list function pulled in later
+  (`filter`, `List.rev`, etc.): it compiles fine for other Isabelle
+  targets, but for Python it silently produces a call into a module that's
+  never actually generated. The fix is the same native-printer treatment
+  given to `map` here, not a change to `code_python.ML` itself.
 
 **Tuples**
 
@@ -187,6 +205,21 @@ extension, and typeclass/superclass method dispatch.
 - Every site where Pretty-printing could otherwise silently line-wrap a
   bare `return`/assignment across multiple lines and produce invalid
   Python is guarded with explicit parentheses.
+
+**Partial application**
+ 
+- A constant applied to fewer arguments than its declared arity — genuine
+  partial application (`add2 1`), a bare function reference used as a
+  first-class value (passing `f` to `map`), or a point-free alias
+  (`f = g`) — prints correctly rather than crashing or emitting a
+  wrong-arity call. Under-saturated calls are eta-expanded via Isabelle's
+  own `Code_Thingol.saturated_application` before printing (reusing the
+  framework's mechanism rather than a hand-rolled one), which comes out as
+  a Python `lambda`; a bare reference (zero arguments supplied) is
+  special-cased to print as the plain function name instead of a redundant
+  no-op lambda. Point-free aliases are handled by computing arity from the
+  alias's declared type rather than trusting its own equation's
+  (misleadingly empty) parameter list.
 
 **Module output**
 

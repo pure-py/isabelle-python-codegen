@@ -91,6 +91,26 @@ fun describe_len :: "nat list \<Rightarrow> nat" where
 
 definition describe_len_123 :: nat where "describe_len_123 = describe_len [1, 2, 3]"
 
+section \<open>partial application\<close>
+
+definition add2 :: "int \<Rightarrow> int \<Rightarrow> int" where
+  "add2 x y = x + y"
+
+text \<open>genuine partial application: only 1 of add2's 2 args supplied\<close>
+definition add_one :: "int \<Rightarrow> int" where
+  "add_one = add2 1"
+
+definition p_add_one_5 :: int where "p_add_one_5 = add_one 5"
+
+text \<open>point-free alias: add2_ref's own equation has 0 explicit parameters\<close>
+definition add2_ref :: "int \<Rightarrow> int \<Rightarrow> int" where
+  "add2_ref = add2"
+
+definition p_ref_result :: int where "p_ref_result = add2_ref 3 4"
+
+text \<open>requires the native code_printing registration for List.map\<close>
+definition p_mapped :: "int list" where "p_mapped = map add_one [1, 2, 3]"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -169,6 +189,7 @@ export_code
   classify classify_zero classify_other
   weird weird_zero weird_five
   describe_len describe_len_123
+  add2 add_one p_add_one_5 add2_ref p_ref_result p_mapped
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   cls_list_default cls_list_default_empty

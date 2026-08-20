@@ -159,6 +159,29 @@ def test_list_pattern_matching():
     assert m.describe_len_123 == 3
 
 
+# ---- partial application ----
+
+def test_partial_application():
+    # add_one = add2 1 -- genuine partial application, eta-expanded via
+    # Code_Thingol.saturated_application into a Python lambda
+    assert m.add_one(5) == 6
+    assert m.p_add_one_5 == 6
+
+
+def test_bare_reference_and_point_free_alias():
+    # add2_ref = add2 -- point-free alias; args_num falls back to the
+    # declared type's arity since the alias's own equation has no
+    # explicit parameters of its own
+    assert m.p_ref_result == 7
+
+
+def test_map_native_list():
+    # map add_one [1, 2, 3] -- requires the native code_printing
+    # registration for List.map (Python_Setup.thy); without it this
+    # silently fails to compile map's definition at all
+    assert m.p_mapped == [2, 3, 4]
+
+
 # ---- records, including extension ----
 
 def test_record_extension_roundtrip():

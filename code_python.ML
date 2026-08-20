@@ -348,13 +348,19 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
 
     and print_dicts tyvars some_thm vars = tuplify (print_dict tyvars some_thm vars)
 
-    and print_app_expr const_syntax tyvars some_thm vars (const as { sym, dictss, ...}, ts) =
-      if is_class_param sym andalso not (null dictss)
+    and print_app_expr const_syntax tyvars some_thm vars (app as (const as { sym, dictss, ...}, ts)) =
+      let val l = args_num sym in
+      if length ts < l
+      then
+        if null ts andalso not (is_class_param sym andalso not (null dictss))
+        then [(Pretty.str o deresolve) sym]
+        else [print_python_expr const_syntax tyvars some_thm vars BR
+                (Code_Thingol.saturated_application l app)]
+      else if is_class_param sym andalso not (null dictss)
       then 
         let 
           val self_dict_pretty = print_dict tyvars some_thm vars NOBR (hd (hd dictss))
           val extra_dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) (tl dictss)
-          val l = args_num sym
           val (immediate, curried) = chop l ts
           val immediate_pretty =
             map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
@@ -369,7 +375,6 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       then [(Pretty.str o deresolve) sym]
       else
         let
-          val l = args_num sym
           val (immediate, curried) = chop l ts
           val dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) dictss
           val immediate_pretty =
@@ -380,6 +385,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           val head_pretty = (Pretty.str o deresolve) sym
           val call = gen_applify true "(" ")" I NOBR head_pretty (dict_pretty @ immediate_pretty)
         in call :: curried_pretty end
+      end
 
     and print_app const_syntax tyvars some_thm vars fxy (const, ts) =
       if List.exists (fn name => #sym const = Constant name) undefineds
@@ -625,7 +631,10 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
     
     fun args_num (sym as Constant const) = case Code_Symbol.Graph.get_node program sym
      of Code_Thingol.Fun (((_, ty), []), _) => (length o fst o Code_Thingol.unfold_fun) ty
-      | Code_Thingol.Fun ((_, ((ts, _), _) :: _), _) => length ts
+      | Code_Thingol.Fun (((_, ty), ((ts, _), _) :: _), _) =>
+          if null ts
+          then (length o fst o Code_Thingol.unfold_fun) ty
+          else length ts
       | Code_Thingol.Datatypecons tyco => length (the (lookup_constr tyco const))
       | Code_Thingol.Classparam class =>
           (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)

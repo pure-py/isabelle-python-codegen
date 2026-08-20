@@ -119,7 +119,8 @@ code_printing
   | constant List.list.Nil \<rightharpoonup> (Python) "[]"
   
 code_printing
-  constant "length" \<rightharpoonup> (Python) "len'(_')"
+    constant "length" \<rightharpoonup> (Python) "len'(_')"
+  | constant List.map \<rightharpoonup> (Python) "list(map((_), (_)))"
 
 setup \<open>
   let
