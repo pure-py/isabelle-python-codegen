@@ -113,6 +113,44 @@ setup \<open>
   Numeral.add_code \<^const_name>\<open>Num.nat_of_num\<close> I Code_Printer.literal_numeral "Python"
 \<close>
 
+(* Code_Numeral: integer/natural (target-language numerals) *)
+code_printing
+    type_constructor Code_Numeral.integer \<rightharpoonup> (Python) "int"
+  | constant "0 :: Code_Numeral.integer" \<rightharpoonup> (Python) "0"
+  | constant "(+) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ + _)"
+  | constant "(-) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ - _)"
+  | constant "uminus :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(- _)"
+  | constant "(*) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ * _)"
+  | constant "(div) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ '/'/ _)"
+  | constant "(mod) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "HOL.equal :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
+  | constant "(\<le>) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
+  | constant "(<) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
+  | constant "abs :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "abs'(_')"
+
+setup \<open>
+  (fn target =>
+    Numeral.add_code \<^const_name>\<open>Code_Numeral.Pos\<close> I
+      Code_Printer.literal_numeral target
+    #> Numeral.add_code \<^const_name>\<open>Code_Numeral.Neg\<close> (~)
+      Code_Printer.literal_numeral target)
+    "Python"
+\<close>
+
+code_printing
+    type_constructor Code_Numeral.natural \<rightharpoonup> (Python) "int"
+  | constant "0 :: Code_Numeral.natural" \<rightharpoonup> (Python) "0"
+  | constant "1 :: Code_Numeral.natural" \<rightharpoonup> (Python) "1"
+  | constant "(+) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ + _)"
+  | constant "(-) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "max(0, _ - _)"
+  | constant "(*) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ * _)"
+  | constant "(div) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ '/'/ _)"
+  | constant "(mod) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "HOL.equal :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
+  | constant "(\<le>) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
+  | constant "(<) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
+  | constant Code_Numeral.natural_of_integer \<rightharpoonup> (Python) "max(0, _)"
+
 (* Lists *)
 code_printing
     type_constructor List.list \<rightharpoonup> (Python) "_ list"

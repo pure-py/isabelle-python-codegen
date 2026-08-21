@@ -23,6 +23,7 @@ session Python_Examples in "examples" = Python +
     Example_nested_case
     Example_partial
     Example_options
+    Example_code_numerals
   export_files (in "../python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +

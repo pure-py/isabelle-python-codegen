@@ -182,6 +182,19 @@ def test_map_native_list():
     assert m.p_mapped == [2, 3, 4]
 
 
+# ---- code numerals ----
+
+def test_code_numeral_integer():
+    assert m.cn_int_lit == 42
+    assert m.cn_neg == -5
+    assert m.cn_sum == 50
+
+
+def test_code_numeral_natural():
+    assert m.cn_nat_lit == 7
+    assert m.cn_nat_sum == 10
+
+
 # ---- records, including extension ----
 
 def test_record_extension_roundtrip():

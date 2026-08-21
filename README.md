@@ -159,6 +159,17 @@ extension, and typeclass/superclass method dispatch.
   correct regardless of clause order. The empty constructor's generated
   class is named `Nonea`, not `None` (a reserved word) — cosmetic only.
 
+
+**Code_Numeral (`integer`/`natural`)**
+ 
+- HOL's own "target language numeral" types print as native Python ints,
+  the same as `int`/`nat`: literals, `+`, `-`, `*`, `div`/`mod`, and
+  comparisons all print as native operators. `natural`'s conversion from
+  `integer` (`natural_of_integer`) prints as `max(0, _)`, matching its
+  real clamp-negative-to-zero semantics rather than a bare pass-through.
+  `integer`'s `sgn` and the cross-type conversions
+  (`nat_of_integer`/`integer_of_nat`/etc.) aren't registered yet.
+
 **Module output**
 
 - Statements print in dependency-respecting order; nullary constants print
@@ -169,3 +180,11 @@ extension, and typeclass/superclass method dispatch.
 
 - No support yet for `real`, `rat`, or other numeric types beyond
   `int`/`nat`.
+- A numeral payload passed through a generic constructor path (e.g.
+  `Some 5`, or an `integer`/`natural` literal) triggers an unused `import
+  Num` in the generated module -- HOL's term-level dependency graph
+  records a reference to `Num.numeral`'s binary encoding even though the
+  literal itself prints natively. Harmless (the import just goes unused),
+  and deliberately not fixed: doing so would mean matching against the
+  generated source text to detect it, which is more brittle than the
+  payoff is worth.

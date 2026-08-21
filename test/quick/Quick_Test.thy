@@ -111,6 +111,24 @@ definition p_ref_result :: int where "p_ref_result = add2_ref 3 4"
 text \<open>requires the native code_printing registration for List.map\<close>
 definition p_mapped :: "int list" where "p_mapped = map add_one [1, 2, 3]"
 
+section \<open>code_numeral (integer/natural)\<close>
+
+definition cn_int_lit :: integer where "cn_int_lit = 42"
+
+definition cn_add :: "integer \<Rightarrow> integer \<Rightarrow> integer" where
+  "cn_add x y = x + y"
+
+definition cn_sum :: integer where "cn_sum = cn_add cn_int_lit 8"
+
+definition cn_neg :: integer where "cn_neg = -5"
+
+definition cn_nat_lit :: natural where "cn_nat_lit = 7"
+
+definition cn_nat_add :: "natural \<Rightarrow> natural \<Rightarrow> natural" where
+  "cn_nat_add x y = x + y"
+
+definition cn_nat_sum :: natural where "cn_nat_sum = cn_nat_add cn_nat_lit 3"
+
 section \<open>records, including extension\<close>
 
 record point =
@@ -202,6 +220,7 @@ export_code
   weird weird_zero weird_five
   describe_len describe_len_123
   add2 add_one p_add_one_5 add2_ref p_ref_result p_mapped
+  cn_int_lit cn_add cn_sum cn_neg cn_nat_lit cn_nat_add cn_nat_sum
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   cls_list_default cls_list_default_empty
