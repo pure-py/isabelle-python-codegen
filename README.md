@@ -221,6 +221,18 @@ extension, and typeclass/superclass method dispatch.
   alias's declared type rather than trusting its own equation's
   (misleadingly empty) parameter list.
 
+**Option**
+ 
+- `Some`/`None` compile via the generic constructor path: `option` prints
+  as an ordinary two-constructor datatype (`@dataclass(frozen=True) class
+  Some: a: Any` / a nullary `None`-like class), and pattern matches on
+  `Some x`/`None` print as ordinary `match`/`case` arms, structurally
+  correct regardless of clause order (real class-based `match`, not a
+  captured sentinel value). The generated class for the empty constructor
+  is named `Nonea`, not `None` (Python's `None` is a reserved keyword, so
+  it goes through the same reserved-word suffixing as any other name that
+  collides with one) -- this is cosmetic, not a correctness issue.
+
 **Module output**
 
 - Statements print in dependency-respecting order; nullary constants

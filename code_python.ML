@@ -12,6 +12,12 @@ open Code_Printer;
 
 val target = "Python";
 
+val python_reserved_words =
+  ["False", "None", "True", "and", "as", "assert", "await", "break", "class",
+   "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
+   "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
+   "raise", "return", "try", "while", "with", "yield", "match", "case"];
+
 datatype python_stmt = 
     Fun of typscheme * ((iterm list * iterm) * (thm option * bool)) list
   | Datatype of vname list * ((string * vname list) * itype list) list
@@ -565,6 +571,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       let val (base', nsp_common') = Name.variant base nsp_common
       in (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), nsp_common')) end;
 
+    (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt (Code_Thingol.Fun _) = namify_common
       | namify_stmt (Code_Thingol.Datatype _) = namify_common
       | namify_stmt (Code_Thingol.Datatypecons _) = namify_common
@@ -654,7 +661,7 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
-          val entries = Code_Symbol.Graph.topological_order stmt_gr
+          val entries = (Code_Symbol.Graph.strong_conn stmt_gr |> flat)
             |> rev
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
               of (_, NONE) => NONE
@@ -752,11 +759,6 @@ val _ = Theory.setup
       run_command = Code_Target.run_command_bash (fn module_name =>
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
-  #> fold (Code_Target.add_reserved target)
-    ["False", "None", "True", "and", "as", "assert", "await", "break", "class",
-      "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
-      "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
-      "raise", "return", "try", "while", "with", "yield", "match", "case"
-    ]);
+  #> fold (Code_Target.add_reserved target) python_reserved_words);
 
 end; (* struct *)

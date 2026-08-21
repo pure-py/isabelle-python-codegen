@@ -177,6 +177,18 @@ definition cls_list_default :: int where "cls_list_default = default_val [TagB, 
 definition cls_list_default_empty :: int where
   "cls_list_default_empty = default_val ([] :: tag list)"
 
+section \<open>option\<close>
+
+definition o_some :: "int option" where "o_some = Some 5"
+definition o_none :: "int option" where "o_none = None"
+
+fun describe_opt :: "int option \<Rightarrow> int" where
+  "describe_opt None = 0"
+| "describe_opt (Some x) = x + 1"
+
+definition o_describe_some :: int where "o_describe_some = describe_opt o_some"
+definition o_describe_none :: int where "o_describe_none = describe_opt o_none"
+
 export_code
   t_point t_swap t_add_points t_points_sum
   i_quotient_neg i_remainder_neg i_checksum
@@ -193,6 +205,7 @@ export_code
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a
   cls_list_default cls_list_default_empty
+  o_some o_none describe_opt o_describe_some o_describe_none
   in Python file_prefix "."
 
 end

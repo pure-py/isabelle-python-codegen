@@ -203,3 +203,10 @@ def test_dict_parameterized_instance():
     # exercises print_dict_args for Class_Instance printing.
     assert m.cls_list_default == 2        # default_val TagB (first elem of [TagB, TagA])
     assert m.cls_list_default_empty == 0
+
+
+# ---- options ----
+
+def test_option_values():
+    assert m.o_describe_some == 6
+    assert m.o_describe_none == 0
