@@ -24,22 +24,19 @@ type eqtn = {
   thm: thm option
 }
 
+type cnstr = {
+  name: string,
+  typarams: vname list,
+  arg_tys: itype list
+} 
+
 (* In the spirit of some of the other code generator backends we define our own
  * datatype of python stmts, which is a subset of the the stmts defined
  * in Thingol (built by `python_stmt_of_thingol`).
  *)
 datatype python_stmt =
-    (* A function (or value definition, if it has no arguments)
-     * Arguments:
-     *    - typescheme: type vars + function type,
-     *        for example roughly: ['a, 'b], 'a -> 'b
-     *    - list of equations:
-     *        each element is an equation of the form (pattern list, rhs)
-     *        thm option is only used for printing error messages
-     *        bool marks inactive/default equations, which are not printed
-     *)
-    (* Fun of typscheme * ((iterm list * iterm) * (thm option * bool)) list *)
-    Fun of { tyvars: (vname * sort) list, ty: itype, eqs: eqtn list }
+    (* A function (or value definition, if it has no arguments) *)
+    Fun of { vs: (vname * sort) list, ty: itype, eqs: eqtn list }
 
     (* A datatype definition (turns into one `@dataclass` per constructor)
      * Arguments:
@@ -48,7 +45,8 @@ datatype python_stmt =
      *        (constructor name, type param list), types of constructor args
      *        type param list is almost always the same as vname list above
      *)
-  | Datatype of vname list * ((string * vname list) * itype list) list
+  (* | Datatype of vname list * ((string * vname list) * itype list) list *)
+  | Datatype of { typarams: vname list, cnstrs: cnstr list } 
 
     (* A typeclass definition (turns into a `@dataclass with one Callable
      * field per method, and one field per direct superclass)
@@ -57,7 +55,7 @@ datatype python_stmt =
      *    - (class, class) list: (this, superclass) pairs
      *    - (string * itype) list: (method name, method type)
      *)
-  | Class of (vname * ((class * class) list * (string * itype) list))
+  | Class of { self: vname, super: (class * class) list, methods: (string * itype) list }
 
     (* A typeclass instance definition
      * This turns into a function returning an instance of the class'
@@ -106,6 +104,12 @@ fun invent_name vars prefix =
     val name = Name.invent (snd vars) prefix 1 |> hd
     val vars' = intro_vars [name] vars
   in (name, vars') end
+
+fun invent_names vars prefix n =
+  let
+    val names = Name.invent (snd vars) prefix n
+    val vars' = intro_vars names vars
+  in (names, vars') end
 
 (*
  * arguments:
@@ -382,20 +386,20 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | is_stmt_free (_ `|=> (t, _)) = is_stmt_free t
       | is_stmt_free _ = true
 
-    and print_dict tyvars some_thm vars _ (Dict (classrels, plain_dict)) =
+    and print_dict some_thm vars _ (Dict (classrels, plain_dict)) =
       fold (fn classrel => fn p =>
         Pretty.block [p, Pretty.str".", (Pretty.str o deresolve) (Class_Relation classrel)])
       (rev classrels) (* need to go from source dict inwards *)
-      (print_plain_dict tyvars some_thm vars plain_dict)
+      (print_plain_dict some_thm vars plain_dict)
     
-    and print_plain_dict tyvars some_thm vars (Dict_Const (inst, dictss)) =
+    and print_plain_dict some_thm vars (Dict_Const (inst, dictss)) =
           gen_applify true "(" ")" I NOBR
             ((Pretty.str o deresolve) (Class_Instance inst))
-            (map_filter (print_dicts tyvars some_thm vars BR o snd) dictss)
-      | print_plain_dict _ _ _ (Dict_Var { var, index, length, ... }) =
+            (map_filter (print_dicts some_thm vars BR o snd) dictss)
+      | print_plain_dict _ _ (Dict_Var { var, index, length, ... }) =
           Pretty.str (var ^ "_dict" ^ (if length = 1 then "" else string_of_int (index + 1)))
 
-    and print_dicts tyvars some_thm vars = tuplify (print_dict tyvars some_thm vars)
+    and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
     and print_app_expr const_syntax tyvars some_thm vars (app as ({ sym, dictss, ...}, ts)) =
       let val l = args_num sym in
@@ -408,8 +412,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       else if is_class_param sym andalso not (null dictss)
       then 
         let 
-          val self_dict_pretty = print_dict tyvars some_thm vars NOBR (hd (hd dictss))
-          val extra_dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) (tl dictss)
+          val self_dict_pretty = print_dict some_thm vars NOBR (hd (hd dictss))
+          val extra_dict_pretty = map_filter (print_dicts some_thm vars BR) (tl dictss)
           val (immediate, curried) = chop l ts
           val immediate_pretty =
             map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
@@ -425,7 +429,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       else
         let
           val (immediate, curried) = chop l ts
-          val dict_pretty = map_filter (print_dicts tyvars some_thm vars BR) dictss
+          val dict_pretty = map_filter (print_dicts some_thm vars BR) dictss
           val immediate_pretty =
             map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
           val curried_pretty =
@@ -443,17 +447,17 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       else gen_print_app (print_app_expr const_syntax tyvars)
         (print_python_expr const_syntax tyvars) const_syntax some_thm vars fxy (const, ts)
 
-    fun print_python_typedef tyco cos reserved =
+    fun print_python_typedef tyco { cnstrs, ... } reserved =
       let
         val thy = Proof_Context.theory_of ctxt
         val field_names = 
           case Record.get_info thy (Long_Name.qualifier tyco) of
               SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
             | NONE => NONE
-        fun print_constructor ((name, _), tys) =
+        fun print_constructor { name, arg_tys, ... } =
           let
             val name_ctxt = Name.declare "self" (snd reserved)
-            val named_fields = Name.invent_names name_ctxt "a" tys
+            val named_fields = Name.invent_names name_ctxt "a" arg_tys
             val labels = 
               case field_names of
                   SOME names =>
@@ -471,11 +475,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
              Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
              indent_block 4 (if null fields then Pretty.str "pass" else Pretty.chunks fields)]
           end
-      in Pretty.chunks (map print_constructor cos) end;
+      in Pretty.chunks (map print_constructor cnstrs) end;
 
-    fun print_python_class sym (_, (super, params)) =
+    fun print_python_class sym { super, methods, ... } =
       let
-        val fields = params
+        val fields = methods
           |> map (fn (name, _) => Pretty.str (Long_Name.base_name (deresolve_const name) ^ ": Callable"))
         val super_fields = super
           |> map (fn (self, super) => Pretty.str
@@ -486,8 +490,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
          indent_block 4 (Pretty.chunks (super_fields @ fields))]
       end;
 
-    fun print_dict_args tyvars some_thm vars vs = map_filter (fn (v, sort) =>
-          print_dicts tyvars some_thm vars BR
+    fun print_dict_args some_thm vars vs = map_filter (fn (v, sort) =>
+          print_dicts some_thm vars BR
             (map_index (fn (i, _) => Dict ([],
               Dict_Var { var = v, index = i, length = length sort, 
                 class = nth sort i, unique = true })) sort)) vs
@@ -512,58 +516,79 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         fun print_superinst_field (super_class, dictss) =
           let
             val field_name = Long_Name.base_name (deresolve_classrel (class, super_class))
-            val value = print_plain_dict tyvars NONE tyvars
+            val value = print_plain_dict NONE tyvars
               (Dict_Const ((tyco, super_class), dictss))
           in concat [Pretty.str field_name, Pretty.str "=", value] end
         
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
         val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
-          Pretty.enum "," "(" ")" (print_dict_args tyvars NONE tyvars vs), Pretty.str ":"]
+          Pretty.enum "," "(" ")" (print_dict_args NONE tyvars vs), Pretty.str ":"]
       in Pretty.chunks [head, indent_block 4 body] end;
 
-    fun print_python_func const { tyvars, ty, eqs = [] } =
+    fun print_func_head const vctxt dicts params =
+      Pretty.block [
+          Pretty.str "def ", 
+          Pretty.str (deresolve_const const),
+          Pretty.enum "," "(" ")" (
+            dicts @
+            map (fn NONE => Pretty.str "_" 
+                  | SOME v => Pretty.str (lookup_var vctxt v)
+            ) params
+          ),
+          Pretty.str ":"
+      ]
+
+    (* This functions needs to distinguish different cases:
+     *  - functions without any code equations => print `pass`
+     *  - value definitions (i.e., nullary functions), should not be printed as
+     *      python functions, but as simple assignments
+     *  - simple functions (i.e., functions that only have one equations, and
+     *      where all the argument patterns are simple variables),
+     *      these should be printed as standard python functions
+     *  - functions that have multiple equations, or where there is a pattern
+     *      in the arguments, these have to use match/case
+     *)
+    fun print_python_func const { vs, ty, eqs = [] } =
       (* if we have no code equations *)
       let
-        val (tys, _) = Code_Thingol.unfold_fun ty
-        val tyvars' = intro_vars (map fst tyvars) reserved
-        val params = Name.invent (snd reserved) "a" (length tys)
-        val vars = intro_vars params tyvars'
-        val dict_params = print_dict_args tyvars' NONE vars tyvars
-        val head = Pretty.block [Pretty.str "def ", Pretty.str (deresolve_const const),
-          Pretty.enum "," "(" ")" (dict_params @ map (Pretty.str o lookup_var vars) params), 
-          Pretty.str ":"]
+        val arity = Code_Thingol.unfold_fun ty |> fst |> length
+        (* register the type variable names to avoid name clashes *)
+        val vctxt = intro_vars (map fst vs) reserved
+        (* for each argument, invent a name *)
+        val (params, vctxt) = invent_names vctxt "a" arity
+        (* create necessary typeclass dictionary arguments *)
+        val dict_params = print_dict_args NONE vctxt vs
+        val head = print_func_head const vctxt dict_params (map SOME params)
         val _ = warning ("function " ^ const ^ " has no code equations")
-      in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
-          Pretty.str (print_python_string const), Pretty.str ")"])]
+      in Pretty.chunks [head, indent_block 4 (Pretty.block [Pretty.str "pass"])]
       end
-      | print_python_func const { tyvars, eqs, ... } =
+      | print_python_func const { vs, eqs, ... } =
         let
-          val tyvars' = intro_vars (map fst tyvars) reserved
-          val (simple, simple_params) = case eqs of 
+          (* same as above, register typevar names to avoid type clashes *)
+          val vctxt = intro_vars (map fst vs) reserved
+           val (simple, simple_params) = 
+            case eqs of 
               [ { patterns, ... } ] => 
                 if forall Code_Thingol.is_IVar patterns 
-                then (true, map
-                  (fn IVar x => x | _ => raise Fail "should not happen") patterns)
+                then (true, map (
+                  fn IVar x => x 
+                   | _ => raise Fail "should not happen") patterns)
                 else (false, [])
-            | _ => (false, [])
-          val vars1 = tyvars'
+              | _ => (false, [])
+          val vars1 = vctxt
             |> intro_base_names_for (is_none o const_syntax) deresolve (map #rhs eqs)
           val params = if simple then simple_params
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
-          val dict_params = print_dict_args tyvars' NONE vars2 tyvars
+          val dict_params = print_dict_args NONE vars2 vs
           (* Is this a function or a simple value? *)
           val is_value = simple andalso null params andalso null dict_params
-          val head = Pretty.block [Pretty.str "def ", Pretty.str (deresolve_const const),
-            Pretty.enum "," "(" ")"
-              (dict_params @ map (fn NONE => Pretty.str "_" | SOME v => Pretty.str (lookup_var vars2 v)) params),
-            Pretty.str ":"]
+          val head = print_func_head const vars2 dict_params params
           fun print_rhs some_thm vars t =
-            print_tail_expr tyvars' some_thm
+            print_tail_expr vctxt some_thm
               (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
-                print_python_expr const_syntax tyvars' some_thm vars' NOBR t', Pretty.str ")"])
+                print_python_expr const_syntax vctxt some_thm vars' NOBR t', Pretty.str ")"])
               vars t
         in
           if simple
@@ -571,9 +596,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             let val { rhs = t, thm = some_thm, ... } = hd eqs
             in
             if is_value
-            then print_tail_expr tyvars some_thm
+            then print_tail_expr vs some_thm
               (fn vars' => fn t' => Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
-                print_python_expr const_syntax tyvars some_thm vars' NOBR t', Pretty.str ")"])
+                print_python_expr const_syntax vs some_thm vars' NOBR t', Pretty.str ")"])
               vars2 t
             else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
           end
@@ -589,7 +614,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                   val pattern_pretty = if length sub_patterns = 1
                     then print_python_pattern (hd sub_patterns)
                     else Pretty.enum "," "(" ")" (map print_python_pattern sub_patterns)
-                  val header = print_case_header tyvars thm vars' pattern_pretty guards
+                  val header = print_case_header vs thm vars' pattern_pretty guards
                 in Pretty.chunks [header,
                     indent_block 4 (Pretty.chunks (preamble @ [print_rhs thm vars' rhs]))]
                 end
@@ -602,8 +627,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     fun print_stmt (Constant const, (_, Fun f)) =
           print_python_func const f
-      | print_stmt (Type_Constructor tyco, (_, Datatype (_, cos))) =
-          print_python_typedef tyco cos reserved
+      | print_stmt (Type_Constructor tyco, (_, Datatype d)) =
+          print_python_typedef tyco d reserved
       | print_stmt (Type_Class sym, (_, Class class)) =
           print_python_class sym class
       | print_stmt (Class_Instance sym, (_, Instance instance)) =
@@ -704,10 +729,18 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               if def 
               then SOME { patterns = patterns, rhs = rhs, thm = thm }
               else NONE) eqs
-            val (tyvars, ty) = typescheme
-          in Fun { tyvars = tyvars, ty = ty, eqs = eqs' } end
-      | python_stmt_of_thingol (Code_Thingol.Datatype x) = Datatype x
-      | python_stmt_of_thingol (Code_Thingol.Class x) = Class x
+            val (vs, ty) = typescheme
+          in Fun { vs = vs, ty = ty, eqs = eqs' } end
+      | python_stmt_of_thingol (Code_Thingol.Datatype x) =
+          let
+            val (typarams, cnstrs) = x
+            val constrs' = map (fn ((name, typarams), arg_tys) =>
+              { name = name, typarams = typarams, arg_tys = arg_tys }
+            ) cnstrs
+          in Datatype { typarams = typarams, cnstrs = constrs' } end
+      | python_stmt_of_thingol (Code_Thingol.Class x) =
+          let val (self, (super, methods)) = x
+          in Class { self = self, super = super, methods = methods } end
       | python_stmt_of_thingol (Code_Thingol.Classinst inst) = Instance inst
       | python_stmt_of_thingol _ = raise Fail "unexpected statement";
 
