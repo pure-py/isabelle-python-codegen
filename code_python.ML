@@ -45,7 +45,6 @@ datatype python_stmt =
      *        (constructor name, type param list), types of constructor args
      *        type param list is almost always the same as vname list above
      *)
-  (* | Datatype of vname list * ((string * vname list) * itype list) list *)
   | Datatype of { typarams: vname list, cnstrs: cnstr list } 
 
     (* A typeclass definition (turns into a `@dataclass with one Callable
@@ -55,7 +54,7 @@ datatype python_stmt =
      *    - (class, class) list: (this, superclass) pairs
      *    - (string * itype) list: (method name, method type)
      *)
-  | Class of { self: vname, super: (class * class) list, methods: (string * itype) list }
+  | Class of { super: (class * class) list, methods: (string * itype) list }
 
     (* A typeclass instance definition
      * This turns into a function returning an instance of the class'
@@ -447,7 +446,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       else gen_print_app (print_app_expr const_syntax tyvars)
         (print_python_expr const_syntax tyvars) const_syntax some_thm vars fxy (const, ts)
 
-    fun print_python_typedef tyco { cnstrs, ... } reserved =
+    fun print_python_typedef tyco { cnstrs, ... } =
       let
         val thy = Proof_Context.theory_of ctxt
         val field_names = 
@@ -477,7 +476,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           end
       in Pretty.chunks (map print_constructor cnstrs) end;
 
-    fun print_python_class sym { super, methods, ... } =
+    fun print_python_class sym { super, methods } =
       let
         val fields = methods
           |> map (fn (name, _) => Pretty.str (Long_Name.base_name (deresolve_const name) ^ ": Callable"))
@@ -628,7 +627,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     fun print_stmt (Constant const, (_, Fun f)) =
           print_python_func const f
       | print_stmt (Type_Constructor tyco, (_, Datatype d)) =
-          print_python_typedef tyco d reserved
+          print_python_typedef tyco d
       | print_stmt (Type_Class sym, (_, Class class)) =
           print_python_class sym class
       | print_stmt (Class_Instance sym, (_, Instance instance)) =
@@ -739,8 +738,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
             ) cnstrs
           in Datatype { typarams = typarams, cnstrs = constrs' } end
       | python_stmt_of_thingol (Code_Thingol.Class x) =
-          let val (self, (super, methods)) = x
-          in Class { self = self, super = super, methods = methods } end
+          let val (_, (super, methods)) = x
+          in Class { super = super, methods = methods } end
       | python_stmt_of_thingol (Code_Thingol.Classinst inst) = Instance inst
       | python_stmt_of_thingol _ = raise Fail "unexpected statement";
 
