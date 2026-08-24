@@ -19,16 +19,19 @@ val python_reserved_words =
    "raise", "return", "try", "while", "with", "yield", "match", "case"];
 
 type eqtn = { 
-  patterns: iterm list, 
-  rhs: iterm,
-  thm: thm option
+  patterns: iterm list,       (* left hand side pattern list *)
+  rhs: iterm,                 (* rhs expr *)
+  thm: thm option             (* original theorem, only used for error printing *)
 }
 
 type cnstr = {
-  name: string,
-  typarams: vname list,
-  arg_tys: itype list
+  name: string,               (* name of the constructor *)
+  typarams: vname list,       (* type parameters *)
+  arg_tys: itype list         (* types of the constructor arguments *)
 } 
+
+type superinst = class * (itype * dict list) list
+type inst_param = (string * (const * int)) * (thm * bool)
 
 (* In the spirit of some of the other code generator backends we define our own
  * datatype of python stmts, which is a subset of the the stmts defined
@@ -36,40 +39,32 @@ type cnstr = {
  *)
 datatype python_stmt =
     (* A function (or value definition, if it has no arguments) *)
-    Fun of { vs: (vname * sort) list, ty: itype, eqs: eqtn list }
+    Fun of { 
+      vs: (vname * sort) list,  (* tyvars, sort constraints *)
+      ty: itype,                (* type of the function *)
+      eqs: eqtn list            (* code equations, see above *)
+    }
 
-    (* A datatype definition (turns into one `@dataclass` per constructor)
-     * Arguments:
-     *    - vname list: type parameters (e.g., ["'a"] in `'a option`)
-     *    - list of constructors:
-     *        (constructor name, type param list), types of constructor args
-     *        type param list is almost always the same as vname list above
-     *)
-  | Datatype of { typarams: vname list, cnstrs: cnstr list } 
+    (* A datatype definition (turns into one `@dataclass` per constructor) *)
+  | Datatype of { 
+      typarams: vname list,     (* type parameter names *)
+      cnstrs: cnstr list        (* constructor list, see above *)
+    } 
 
     (* A typeclass definition (turns into a `@dataclass with one Callable
-     * field per method, and one field per direct superclass)
-     * Arguments: 
-     *    - vname: the class' "self" type variable
-     *    - (class, class) list: (this, superclass) pairs
-     *    - (string * itype) list: (method name, method type)
-     *)
-  | Class of { super: (class * class) list, methods: (string * itype) list }
+       field per method, and one field per direct superclass) *)
+  | Class of { 
+      super: (class * class) list,    (* super classes *)
+      methods: (string * itype) list  (* class methods *)
+    }
 
-    (* A typeclass instance definition
-     * This turns into a function returning an instance of the class'
-     * dictionary object
-     * Arguments:
-     *    - class: class that's instatiated
-     *    - tyco: type constructor this instance is for
-     *    - vs: instance's type params + sort constraints
-     *    - superinsts: superclass instances this instance also provides
-     *    - inst_params: method implementations
-     *)
-  | Instance of { class: string, tyco: string, vs: (vname * sort) list,
-        superinsts: (class * (itype * dict list) list) list,
-        inst_params: ((string * (const * int)) * (thm * bool)) list,
-        superinst_params: ((string * (const * int)) * (thm * bool)) list };
+    (* A typeclass instance definition *)
+  | Instance of { 
+      tyco: string,                 (* type constructor this instance is for *)
+      vs: (vname * sort) list,      (* type params + sort constraints *)
+      superinsts: superinst list,   (* superclass instances this instance provides *)
+      inst_params: inst_param list  (* method implementations *)
+    };
 
 (* Python source is already UTF-8 *)
 val print_python_string =
@@ -92,8 +87,8 @@ fun print_python_numeral num = signed_string_of_int num;
 val literals = Literals {
   literal_string = print_python_string,
   literal_numeral = print_python_numeral,
-  literal_list = Pretty.enum "," "[" "]", (* Maybe have to rethink this *)
-  infix_cons = (6, "<no infix cons operator in Python>")
+  literal_list = Pretty.enum "," "[" "]",
+  infix_cons = (6, "+")
 };
 
 fun indent_block n p = Pretty.indent n p;
@@ -740,7 +735,10 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       | python_stmt_of_thingol (Code_Thingol.Class x) =
           let val (_, (super, methods)) = x
           in Class { super = super, methods = methods } end
-      | python_stmt_of_thingol (Code_Thingol.Classinst inst) = Instance inst
+      | python_stmt_of_thingol (Code_Thingol.Classinst inst) = 
+        let val { vs, tyco, inst_params, superinsts, ... } = inst
+        in Instance { vs = vs, tyco = tyco, inst_params = inst_params, superinsts = superinsts }
+        end
       | python_stmt_of_thingol _ = raise Fail "unexpected statement";
 
     val module_names = Graph.keys python_program;
