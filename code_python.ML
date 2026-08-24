@@ -55,27 +55,30 @@ val literals = Literals {
 
 fun indent_block n p = Pretty.indent n p;
 
+fun invent_name vars prefix = 
+  let 
+    val name = Name.invent (snd vars) prefix 1 |> hd
+    val vars' = intro_vars [name] vars
+  in (name, vars') end
+
 (*
  * arguments:
  *   undefineds: intentionally unimplemented symbols, turn into 
  *                 `raise NotImplementedError(...)`
- *   tyco_syntax: custom registered code_printing declarations for type constructors
  *   const_syntax: custom registered code_printing declarations for constants
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
- *   is_sum_type: true if a datatype has more than one constructor
  *   is_class_param: true if the current symbol is a type-class method
  *   is_constr: true for any datatype constructor
  *   deresolve: module relative naming resolver
  *)
-fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
-    is_sum_type is_class_param is_value is_constr ctxt (deresolve, _) =
+fun print_python_stmt undefineds const_syntax reserved args_num
+    is_class_param is_value is_constr ctxt (deresolve, _) =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_classrel name = deresolve (Class_Relation name);
     fun deresolve_inst name = deresolve (Class_Instance name);
-    fun deresolve_tyco name = deresolve (Type_Constructor name);
     
     (* Python introduced structural pattern matching in version 3.10. 
      * We can therefore use things like capture patterns, wildcards, and
@@ -127,9 +130,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           then (PClass (deresolve sym, []), [], [], vars)
           else
             (* fallback, create a new name + attach guards *)
-            let
-              val [name] = Name.invent (snd vars) "c" 1
-              val vars' = intro_vars [name] vars
+            let val (name, vars') = invent_name vars "c"
             in (PCapture name, [GEq (name, t)], [], vars') end
       | pattern_of_iterm vars t =
         (case Code_Thingol.unfold_const_app t of
@@ -161,8 +162,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
                 | NONE => error "bad term in pattern")
             | (depth, base) =>
               let
-                val [cname] = Name.invent (snd vars) "c" 1
-                val vars1 = intro_vars [cname] vars
+                val (cname, vars1) = invent_name vars "c"
                 fun depth_guard cmp = GRaw (concat
                   [Pretty.str cname, Pretty.str cmp, Pretty.str (string_of_int depth)])
               in
@@ -205,7 +205,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       | print_python_pattern (PList (ps, SOME rest)) =
           Pretty.enum "," "[" "]" (map print_python_pattern ps @ [Pretty.str ("*" ^ rest)]);
     
-    fun print_guard tyvars some_thm vars [] = NONE
+    fun print_guard _ _ _ [] = NONE
       | print_guard tyvars some_thm vars guards =
         guards
         |> map (fn GEq (name, t) => concat
@@ -241,9 +241,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           in (b1 @ b2, vars2, t1' `$ t2') end
       | anf_term vars (t as (_, _) `|=> (_, _)) = ([], vars, t)
       | anf_term vars (t as ICase _) =
-          let
-            val [x] = Name.invent (snd vars) "x" 1;
-            val vars' = intro_vars [x] vars;
+          let val (x, vars') = invent_name vars "x"
           in ([(x, t)], vars', IVar (SOME x)) end
 
     and print_if_then_else tyvars some_thm finish vars target t_branch e_branch =
@@ -288,14 +286,13 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
     and print_case_block tyvars some_thm finish vars target clauses =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
-        val [tvar] = Name.invent (snd vars1) "target" 1;
-        val vars0 = intro_vars [tvar] vars1;
+        val (tvar, vars0) = invent_name vars1 "target"
         val assign = concat [Pretty.str tvar, Pretty.str "=",
           print_python_expr const_syntax tyvars some_thm vars1 NOBR target'];
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =
           let
-            val (header, vars', body) = print_case_arm tyvars some_thm vars0
+            val (header, _, body) = print_case_arm tyvars some_thm vars0
               (pattern, fn vars' => print_tail_expr tyvars some_thm finish vars' term)
           in Pretty.chunks [header, indent_block 4 body] end;
       in
@@ -306,7 +303,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
     and print_python_expr const_syntax tyvars some_thm vars fxy t =
       case t of
         (* bare reference to name constant *)
-        IConst (const as { sym, ... }) =>
+        IConst (const as { ... }) =>
           print_app const_syntax tyvars some_thm vars fxy (const, [])
         (* function application *)
       | t1 `$ t2 => (case Code_Thingol.unfold_const_app t of
@@ -318,7 +315,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
             (print_python_expr const_syntax tyvars some_thm vars BR t1) [t2])
       | IVar (SOME v) => Pretty.str (lookup_var vars v)
       | IVar NONE => error "can't return a variable with no name"
-      | (params, tys) `|=> (t', rty) =>
+      | (params, _) `|=> (t', _) =>
           let val vars' = intro_vars (map_filter I [params]) vars
           in if is_stmt_free t'
             then Pretty.block
@@ -339,22 +336,22 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       | is_stmt_free (_ `|=> (t, _)) = is_stmt_free t
       | is_stmt_free _ = true
 
-    and print_dict tyvars some_thm vars fxy (Dict (classrels, plain_dict)) =
+    and print_dict tyvars some_thm vars _ (Dict (classrels, plain_dict)) =
       fold (fn classrel => fn p =>
         Pretty.block [p, Pretty.str".", (Pretty.str o deresolve) (Class_Relation classrel)])
       (rev classrels) (* need to go from source dict inwards *)
-      (print_plain_dict tyvars some_thm vars fxy plain_dict)
+      (print_plain_dict tyvars some_thm vars plain_dict)
     
-    and print_plain_dict tyvars some_thm vars fxy (Dict_Const (inst, dictss)) =
+    and print_plain_dict tyvars some_thm vars (Dict_Const (inst, dictss)) =
           gen_applify true "(" ")" I NOBR
             ((Pretty.str o deresolve) (Class_Instance inst))
             (map_filter (print_dicts tyvars some_thm vars BR o snd) dictss)
-      | print_plain_dict tyvars some_thm vars fxy (Dict_Var { var, index, length, ... }) =
+      | print_plain_dict _ _ _ (Dict_Var { var, index, length, ... }) =
           Pretty.str (var ^ "_dict" ^ (if length = 1 then "" else string_of_int (index + 1)))
 
     and print_dicts tyvars some_thm vars = tuplify (print_dict tyvars some_thm vars)
 
-    and print_app_expr const_syntax tyvars some_thm vars (app as (const as { sym, dictss, ...}, ts)) =
+    and print_app_expr const_syntax tyvars some_thm vars (app as ({ sym, dictss, ...}, ts)) =
       let val l = args_num sym in
       if length ts < l
       then
@@ -400,7 +397,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
       else gen_print_app (print_app_expr const_syntax tyvars)
         (print_python_expr const_syntax tyvars) const_syntax some_thm vars fxy (const, ts)
 
-    fun print_python_typedef tyco vs cos reserved =
+    fun print_python_typedef tyco cos reserved =
       let
         val thy = Proof_Context.theory_of ctxt
         val field_names = 
@@ -430,7 +427,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
           end
       in Pretty.chunks (map print_constructor cos) end;
 
-    fun print_python_class sym (target, (super, params)) =
+    fun print_python_class sym (_, (super, params)) =
       let
         val fields = params
           |> map (fn (name, _) => Pretty.str (Long_Name.base_name (deresolve_const name) ^ ": Callable"))
@@ -449,11 +446,11 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
               Dict_Var { var = v, index = i, length = length sort, 
                 class = nth sort i, unique = true })) sort)) vs
 
-    fun print_python_instance (target, class) { vs, tyco, inst_params, superinsts, ... } =
+    fun print_python_instance (target', class) { vs, tyco, inst_params, superinsts, ... } =
       let
         val tyvars = intro_vars (map fst vs) reserved
         val class_pretty = Pretty.str (deresolve_class class)
-        val instance_name = deresolve_inst (target, class)
+        val instance_name = deresolve_inst (target', class)
         
         fun print_classparam_field ((classparam, (const, dom_length)), (thm, _)) =
           let
@@ -469,7 +466,7 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         fun print_superinst_field (super_class, dictss) =
           let
             val field_name = Long_Name.base_name (deresolve_classrel (class, super_class))
-            val value = print_plain_dict tyvars NONE tyvars NOBR
+            val value = print_plain_dict tyvars NONE tyvars
               (Dict_Const ((tyco, super_class), dictss))
           in concat [Pretty.str field_name, Pretty.str "=", value] end
         
@@ -495,16 +492,19 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
         indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
           Pretty.str (print_python_string const), Pretty.str ")"])]
       end
-      | print_python_func const vs ty eqs =
+      | print_python_func const vs _ eqs =
         let
           val tyvars = intro_vars (map fst vs) reserved
-          val simple = case eqs of 
-              [((ts, _), _)] => forall Code_Thingol.is_IVar ts 
-            | _ => false
+          val (simple, simple_params) = case eqs of 
+              [((ts, _), _)] => 
+                if forall Code_Thingol.is_IVar ts 
+                then (true, map
+                  (fn IVar x => x | _ => raise Fail "should not happen") ts)
+                else (false, [])
+            | _ => (false, [])
           val vars1 = tyvars
             |> intro_base_names_for (is_none o const_syntax) deresolve (map (snd o fst) eqs)
-          val params = if simple
-            then (map (fn IVar x => x) o fst o fst o hd) eqs
+          val params = if simple then simple_params
             else map SOME (aux_params vars1 (map (fst o fst) eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args tyvars NONE vars2 vs
@@ -556,8 +556,8 @@ fun print_python_stmt undefineds tyco_syntax const_syntax reserved args_num
 
     fun print_stmt (Constant const, (_, Fun ((vs, ty), raw_eqs))) =
           print_python_func const vs ty (filter (snd o snd) raw_eqs)
-      | print_stmt (Type_Constructor tyco, (_, Datatype (vs, cos))) =
-          print_python_typedef tyco vs cos reserved
+      | print_stmt (Type_Constructor tyco, (_, Datatype (_, cos))) =
+          print_python_typedef tyco cos reserved
       | print_stmt (Type_Class sym, (_, Class class)) =
           print_python_class sym class
       | print_stmt (Class_Instance sym, (_, Instance instance)) =
@@ -578,7 +578,8 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       | namify_stmt (Code_Thingol.Class _) = namify_common
       | namify_stmt (Code_Thingol.Classrel _) = namify_common
       | namify_stmt (Code_Thingol.Classparam _) = namify_common
-      | namify_stmt (Code_Thingol.Classinst _) = namify_common;
+      | namify_stmt (Code_Thingol.Classinst _) = namify_common
+      | namify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
     
     (* Code_Thingol.stmt -> python_stmt option *)
     fun modify_stmt (Code_Thingol.Fun (_, SOME _)) = NONE
@@ -589,7 +590,8 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       | modify_stmt (stmt as Code_Thingol.Class _) = SOME stmt
       | modify_stmt (Code_Thingol.Classrel _) = NONE
       | modify_stmt (Code_Thingol.Classparam _) = NONE
-      | modify_stmt (stmt as Code_Thingol.Classinst _) = SOME stmt;
+      | modify_stmt (stmt as Code_Thingol.Classinst _) = SOME stmt
+      | modify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
   in
     Code_Namespace.flat_program ctxt
       { module_prefix = "", module_name = module_name, reserved = reserved,
@@ -598,8 +600,8 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       exports program
   end;
 
-fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
-    identifiers, includes, class_syntax, tyco_syntax, const_syntax } program exports =
+fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
+    identifiers, includes, const_syntax, ... } program exports =
   let
     val program =
       Code_Symbol.Graph.restrict
@@ -616,36 +618,38 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
       of Code_Thingol.Datatype (_, constrs) => AList.lookup (op = o apsnd fst) constrs constr
        | _ => NONE;
 
-    fun is_sum_type sym = case Code_Symbol.Graph.get_node program sym of
-      Code_Thingol.Datatypecons tyco => (case Code_Symbol.Graph.get_node program (Type_Constructor tyco)
-      of Code_Thingol.Datatype (_, []) => false
-       | Code_Thingol.Datatype (_, [_]) => false
-       | Code_Thingol.Datatype _ => true
-       | _ => false)
+    fun is_class_param (sym as Constant _) = (
+        case Code_Symbol.Graph.get_node program sym of 
+          Code_Thingol.Classparam _ => true
+        | _ => false)
+      | is_class_param _ = raise Fail "should never be reached";
+      
+    fun is_value sym = 
+      case sym of
+        Constant _ => (
+          case Code_Symbol.Graph.get_node program sym of 
+            Code_Thingol.Fun (((vs, _), [((ts, _), _)]), _) => 
+              null vs andalso null ts
+          | _ => false)
       | _ => false;
-
-    fun is_class_param (sym as Constant const) = case Code_Symbol.Graph.get_node program sym
-     of Code_Thingol.Classparam _ => true
-      | _ => false;
-
-    fun is_value (sym as Constant _) = (case Code_Symbol.Graph.get_node program sym
-      of Code_Thingol.Fun (((vs, _), [((ts, _), _)]), _) => null vs andalso null ts
-       | _ => false)
-      | is_value _ = false;
     
-    fun classparams_of_class class = case Code_Symbol.Graph.get_node program (Type_Class class)
-     of Code_Thingol.Class (_, (_, classparams)) => classparams;
+    fun classparams_of_class class = 
+      case Code_Symbol.Graph.get_node program (Type_Class class) of 
+        Code_Thingol.Class (_, (_, classparams)) => classparams
+      | _ => raise Fail "should never be reached";
     
-    fun args_num (sym as Constant const) = case Code_Symbol.Graph.get_node program sym
-     of Code_Thingol.Fun (((_, ty), []), _) => (length o fst o Code_Thingol.unfold_fun) ty
-      | Code_Thingol.Fun (((_, ty), ((ts, _), _) :: _), _) =>
-          if null ts
-          then (length o fst o Code_Thingol.unfold_fun) ty
-          else length ts
-      | Code_Thingol.Datatypecons tyco => length (the (lookup_constr tyco const))
-      | Code_Thingol.Classparam class =>
-          (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)
-            (classparams_of_class class)) const;
+    fun args_num (sym as Constant const) = (case Code_Symbol.Graph.get_node program sym
+      of Code_Thingol.Fun (((_, ty), []), _) => (length o fst o Code_Thingol.unfold_fun) ty
+        | Code_Thingol.Fun (((_, ty), ((ts, _), _) :: _), _) =>
+            if null ts
+            then (length o fst o Code_Thingol.unfold_fun) ty
+            else length ts
+        | Code_Thingol.Datatypecons tyco => length (the (lookup_constr tyco const))
+        | Code_Thingol.Classparam class =>
+            (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)
+              (classparams_of_class class)) const
+        | _ => raise Fail "should never be reached")
+      | args_num _ = raise Fail "should never be reached";
 
     fun python_stmt_of_thingol (Code_Thingol.Fun (x, _)) = Fun x
       | python_stmt_of_thingol (Code_Thingol.Datatype x) = Datatype x
@@ -669,8 +673,8 @@ fun serialize_python undefineds python_module ctxt { module_name, reserved_syms,
                   let
                     val is_classinst = case stmt of Code_Thingol.Classinst _ => true | _ => false;
                     val pretty =
-                      print_python_stmt undefineds tyco_syntax const_syntax
-                        (make_vars reserved_syms) args_num is_sum_type is_class_param is_value
+                      print_python_stmt undefineds const_syntax
+                        (make_vars reserved_syms) args_num is_class_param is_value
                         (Code_Thingol.is_constr program) ctxt (deresolver mod_name, deresolver)
                         (sym, (export, python_stmt_of_thingol stmt));
                     val own_name = deresolver mod_name sym;
