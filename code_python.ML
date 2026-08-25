@@ -114,6 +114,7 @@ fun invent_names vars prefix n =
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
  *   is_constr: true for any datatype constructor
+ *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *)
 fun print_python_stmt undefineds const_syntax reserved args_num
