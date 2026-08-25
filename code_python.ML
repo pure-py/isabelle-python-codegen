@@ -156,15 +156,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (x :: es, tail) end
       | _ => ([], t);
     
-    fun pattern_of_iterm 
-        (* Wildcard pattern _ *)
-        vars (IVar NONE) = (PWild, [], [], vars)
-
-        (* a variable pattern v *)
+    (* Create patterns from iterms *)
+    fun pattern_of_iterm vars (IVar NONE) = (PWild, [], [], vars)
       | pattern_of_iterm vars (IVar (SOME v)) =
           let val vars' = intro_vars [v] vars
           in (PCapture (lookup_var vars' v), [], [], vars') end
-      
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
           if sym = Constant "Nat.zero_nat_inst.zero_nat"
           then (PLiteral (Pretty.str "0"), [], [], vars)
@@ -249,26 +245,26 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | print_python_pattern (PList (ps, SOME rest)) =
           Pretty.enum "," "[" "]" (map print_python_pattern ps @ [Pretty.str ("*" ^ rest)]);
     
-    fun print_guard _ _ _ [] = NONE
-      | print_guard tyvars some_thm vars guards =
+    fun print_guard _ _ [] = NONE
+      | print_guard some_thm vars guards =
         guards
         |> map (fn GEq (name, t) => concat
                   [Pretty.str name, Pretty.str "==",
-                  print_python_expr const_syntax tyvars some_thm vars NOBR t]
+                  print_python_expr const_syntax some_thm vars NOBR t]
                 | GRaw p => p)
         |> separate (Pretty.str "and")
         |> concat |> SOME
 
-    and print_case_header tyvars some_thm vars pattern_pretty guards =
-      case print_guard tyvars some_thm vars guards of
+    and print_case_header some_thm vars pattern_pretty guards =
+      case print_guard some_thm vars guards of
           NONE => Pretty.block [concat [Pretty.str "case", pattern_pretty], Pretty.str ":"]
         | SOME guard => Pretty.block [concat [Pretty.str "case", pattern_pretty,
             Pretty.str "if", guard], Pretty.str ":"]
 
-    and print_case_arm tyvars some_thm vars (pattern, body_pretty) =
+    and print_case_arm some_thm vars (pattern, body_pretty) =
       let
         val (p, guards, preamble, vars') = pattern_of_iterm vars pattern
-        val header = case print_guard tyvars some_thm vars' guards of
+        val header = case print_guard some_thm vars' guards of
             NONE => Pretty.block [concat [Pretty.str "case",
               print_python_pattern p], Pretty.str ":"]
           | SOME guard => Pretty.block [concat [Pretty.str "case", print_python_pattern p,
@@ -288,16 +284,16 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           let val (x, vars') = invent_name vars "x"
           in ([(x, t)], vars', IVar (SOME x)) end
 
-    and print_if_then_else tyvars some_thm finish vars target t_branch e_branch =
+    and print_if_then_else some_thm finish vars target t_branch e_branch =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
-        val cond = print_python_expr const_syntax tyvars some_thm vars1 NOBR target';
+        val cond = print_python_expr const_syntax some_thm vars1 NOBR target';
       in
-        Pretty.chunks (map (print_binding tyvars some_thm vars1) target_bindings @
+        Pretty.chunks (map (print_binding some_thm vars1) target_bindings @
           [Pretty.block [Pretty.str "if ", cond, Pretty.str ":"],
-           indent_block 4 (print_tail_expr tyvars some_thm finish vars1 t_branch),
+           indent_block 4 (print_tail_expr some_thm finish vars1 t_branch),
            Pretty.str "else:",
-           indent_block 4 (print_tail_expr tyvars some_thm finish vars1 e_branch)])
+           indent_block 4 (print_tail_expr some_thm finish vars1 e_branch)])
       end
 
     and get_if_then_else [(p1, t1), (p2, t2)] =
@@ -313,50 +309,50 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           end
       | get_if_then_else _ = NONE
 
-    and print_tail_expr tyvars some_thm finish vars (ICase { term = target, clauses, ... }) =
+    and print_tail_expr some_thm finish vars (ICase { term = target, clauses, ... }) =
         (case get_if_then_else clauses of
-          SOME (t_branch, e_branch) => print_if_then_else tyvars some_thm finish vars target t_branch e_branch
-        | NONE => print_case_block tyvars some_thm finish vars target clauses)
-      | print_tail_expr tyvars some_thm finish vars t =
+          SOME (t_branch, e_branch) => print_if_then_else some_thm finish vars target t_branch e_branch
+        | NONE => print_case_block some_thm finish vars target clauses)
+      | print_tail_expr some_thm finish vars t =
           let val (bindings, vars', t') = anf_term vars t
-          in Pretty.chunks (map (print_binding tyvars some_thm vars') bindings @ [finish vars' t']) end
+          in Pretty.chunks (map (print_binding some_thm vars') bindings @ [finish vars' t']) end
 
-    and print_binding tyvars some_thm vars (name, t) =
-      print_tail_expr tyvars some_thm
+    and print_binding some_thm vars (name, t) =
+      print_tail_expr some_thm
         (fn vars' => fn t' => Pretty.block [Pretty.str name, Pretty.str " = (",
-          print_python_expr const_syntax tyvars some_thm vars' NOBR t', Pretty.str ")"])
+          print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
         vars t
 
-    and print_case_block tyvars some_thm finish vars target clauses =
+    and print_case_block some_thm finish vars target clauses =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
         val (tvar, vars0) = invent_name vars1 "target"
         val assign = concat [Pretty.str tvar, Pretty.str "=",
-          print_python_expr const_syntax tyvars some_thm vars1 NOBR target'];
+          print_python_expr const_syntax some_thm vars1 NOBR target'];
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =
           let
-            val (header, _, body) = print_case_arm tyvars some_thm vars0
-              (pattern, fn vars' => print_tail_expr tyvars some_thm finish vars' term)
+            val (header, _, body) = print_case_arm some_thm vars0
+              (pattern, fn vars' => print_tail_expr some_thm finish vars' term)
           in Pretty.chunks [header, indent_block 4 body] end;
       in
-        Pretty.chunks (map (print_binding tyvars some_thm vars1) target_bindings @
+        Pretty.chunks (map (print_binding some_thm vars1) target_bindings @
           [assign, match_head, indent_block 4 (Pretty.chunks (map one_arm clauses @ [fallthrough_arm]))])
       end
 
-    and print_python_expr const_syntax tyvars some_thm vars fxy t =
+    and print_python_expr const_syntax some_thm vars fxy t =
       case t of
         (* bare reference to name constant *)
         IConst (const as { ... }) =>
-          print_app const_syntax tyvars some_thm vars fxy (const, [])
+          print_app const_syntax some_thm vars fxy (const, [])
         (* function application *)
       | t1 `$ t2 => (case Code_Thingol.unfold_const_app t of
           (* is this an actual function appliction with a named function? *)
-          SOME app => print_app const_syntax tyvars some_thm vars fxy app
+          SOME app => print_app const_syntax some_thm vars fxy app
           (* If not, then this might be a lambda application or similar *)
         | NONE =>
-          applify "(" ")" (print_python_expr const_syntax tyvars some_thm vars NOBR) fxy
-            (print_python_expr const_syntax tyvars some_thm vars BR t1) [t2])
+          applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
+            (print_python_expr const_syntax some_thm vars BR t1) [t2])
       | IVar (SOME v) => Pretty.str (lookup_var vars v)
       | IVar NONE => error "can't return a variable with no name"
       | (params, _) `|=> (t', _) =>
@@ -366,7 +362,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               [Pretty.str "lambda ",
               Pretty.str (case params of NONE => "_" | SOME v => lookup_var vars' v),
               Pretty.str ": ",
-              print_python_expr const_syntax tyvars some_thm vars' NOBR t']
+              print_python_expr const_syntax some_thm vars' NOBR t']
             else
               error "TODO: hoist nested def for non-expression lambda body"
           end
@@ -395,13 +391,13 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
-    and print_app_expr const_syntax tyvars some_thm vars (app as ({ sym, dictss, ...}, ts)) =
+    and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
       let val l = args_num sym in
       if length ts < l
       then
         if null ts andalso not (is_class_param sym andalso not (null dictss))
         then [(Pretty.str o deresolve) sym]
-        else [print_python_expr const_syntax tyvars some_thm vars BR
+        else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
       else if is_class_param sym andalso not (null dictss)
       then 
@@ -410,10 +406,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val extra_dict_pretty = map_filter (print_dicts some_thm vars BR) (tl dictss)
           val (immediate, curried) = chop l ts
           val immediate_pretty =
-            map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
+            map (print_python_expr const_syntax some_thm vars BR) immediate
           val curried_pretty =
             map (fn t => Pretty.enclose "(" ")"
-              [print_python_expr const_syntax tyvars some_thm vars NOBR t]) curried
+              [print_python_expr const_syntax some_thm vars NOBR t]) curried
           val head_pretty = Pretty.block [self_dict_pretty, Pretty.str ".",
             Pretty.str (Code_Symbol.default_base sym)]
           val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dict_pretty @ immediate_pretty)
@@ -425,21 +421,21 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val (immediate, curried) = chop l ts
           val dict_pretty = map_filter (print_dicts some_thm vars BR) dictss
           val immediate_pretty =
-            map (print_python_expr const_syntax tyvars some_thm vars BR) immediate
+            map (print_python_expr const_syntax some_thm vars BR) immediate
           val curried_pretty =
             map (fn t => Pretty.enclose "(" ")"
-              [print_python_expr const_syntax tyvars some_thm vars NOBR t]) curried
+              [print_python_expr const_syntax some_thm vars NOBR t]) curried
           val head_pretty = (Pretty.str o deresolve) sym
           val call = gen_applify true "(" ")" I NOBR head_pretty (dict_pretty @ immediate_pretty)
         in call :: curried_pretty end
       end
 
-    and print_app const_syntax tyvars some_thm vars fxy (const, ts) =
+    and print_app const_syntax some_thm vars fxy (const, ts) =
       if List.exists (fn name => #sym const = Constant name) undefineds
       then Pretty.str ("raise NotImplementedError(" ^
         print_python_string (Code_Symbol.default_base (#sym const)) ^ ")")
-      else gen_print_app (print_app_expr const_syntax tyvars)
-        (print_python_expr const_syntax tyvars) const_syntax some_thm vars fxy (const, ts)
+      else gen_print_app (print_app_expr const_syntax)
+        (print_python_expr const_syntax) const_syntax some_thm vars fxy (const, ts)
 
     fun print_python_typedef tyco { cnstrs, ... } =
       let
@@ -501,7 +497,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             val aux_names = Name.invent (snd reserved) "a" dom_length
             val vars = intro_vars aux_names reserved
             val args = map (IVar o SOME) aux_names
-            val call = print_app const_syntax tyvars (SOME thm) vars NOBR (const, args)
+            val call = print_app const_syntax (SOME thm) vars NOBR (const, args)
             val params = Pretty.enum "," "" "" (map (Pretty.str o lookup_var vars) aux_names)
           in  concat [Pretty.str (Long_Name.base_name (deresolve_const classparam)), Pretty.str "=",
                 Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
@@ -580,9 +576,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val is_value = simple andalso null params andalso null dict_params
           val head = print_func_head const vars2 dict_params params
           fun print_rhs some_thm vars t =
-            print_tail_expr vctxt some_thm
+            print_tail_expr some_thm
               (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
-                print_python_expr const_syntax vctxt some_thm vars' NOBR t', Pretty.str ")"])
+                print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
               vars t
         in
           if simple
@@ -590,9 +586,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             let val { rhs = t, thm = some_thm, ... } = hd eqs
             in
             if is_value
-            then print_tail_expr vs some_thm
+            then print_tail_expr some_thm
               (fn vars' => fn t' => Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
-                print_python_expr const_syntax vs some_thm vars' NOBR t', Pretty.str ")"])
+                print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
               vars2 t
             else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
           end
@@ -608,7 +604,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                   val pattern_pretty = if length sub_patterns = 1
                     then print_python_pattern (hd sub_patterns)
                     else Pretty.enum "," "(" ")" (map print_python_pattern sub_patterns)
-                  val header = print_case_header vs thm vars' pattern_pretty guards
+                  val header = print_case_header thm vars' pattern_pretty guards
                 in Pretty.chunks [header,
                     indent_block 4 (Pretty.chunks (preamble @ [print_rhs thm vars' rhs]))]
                 end
