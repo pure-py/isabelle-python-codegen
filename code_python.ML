@@ -418,7 +418,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             Pretty.str (Code_Symbol.default_base sym)]
           val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dict_pretty @ immediate_pretty)
         in call :: curried_pretty end
-      else if is_value sym andalso null dictss andalso null ts
+      else if is_value sym andalso forall null dictss andalso null ts
       then [(Pretty.str o deresolve) sym]
       else
         let
@@ -694,7 +694,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         Constant _ => (
           case Code_Symbol.Graph.get_node program sym of 
             Code_Thingol.Fun (((vs, _), [((ts, _), _)]), _) => 
-              null vs andalso null ts
+              forall (null o snd) vs andalso null ts
           | _ => false)
       | _ => false;
     
