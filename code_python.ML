@@ -557,9 +557,12 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       end
       | print_python_func const { vs, eqs, ... } =
         let
-          (* same as above, register typevar names to avoid type clashes *)
+          (* same as above, register typevar names to avoid name clashes *)
           val vctxt = intro_vars (map fst vs) reserved
-           val (simple, simple_params) = 
+          (* a `simple` function only has one equations, where all arguments
+             are bare variables (so no destructuring needed), so it can be
+             printed as an ordinary function rather than needing match/case *)
+          val (simple, simple_params) = 
             case eqs of 
               [ { patterns, ... } ] => 
                 if forall Code_Thingol.is_IVar patterns 
@@ -574,8 +577,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args NONE vars2 vs
-          (* Is this a function or a simple value? *)
-          val is_value = simple andalso null params andalso null dict_params
+          (* a simple function without parameters and dictionary arguments can
+             be printed as a plain value (i.e., an assignment x = ...) *)
+          val prints_as_value = simple andalso null params andalso null dict_params
           val head = print_func_head const vars2 dict_params params
           fun print_rhs some_thm vars t =
             print_tail_expr some_thm
@@ -583,18 +587,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
               vars t
         in
-          if simple
+          if prints_as_value
           then
+            (* value definition: `const = (expr)` *)
             let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in
-            if is_value
-            then print_tail_expr some_thm
-              (fn vars' => fn t' => Pretty.block [Pretty.str (deresolve_const const), Pretty.str " = (",
-                print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
-              vars2 t
-            else Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)]
-          end
+            in print_binding some_thm vars2 (deresolve_const const, t) end
+          else if simple
+          then
+            (* simple function, plain variable args *)
+            let val { rhs = t, thm = some_thm, ... } = hd eqs
+            in Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] end
           else
+            (* multiple equations and/or patterns in arguments, this compiles
+               to a match/case over the arguments *)
             let 
               val param_names = map_filter (Option.map (lookup_var vars2)) params
               val scrutinee = if length param_names = 1
