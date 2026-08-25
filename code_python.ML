@@ -551,7 +551,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val dict_params = print_dict_args NONE vctxt vs
         val head = print_func_head const vctxt dict_params (map SOME params)
         val _ = warning ("function " ^ const ^ " has no code equations")
-      in Pretty.chunks [head, indent_block 4 (Pretty.block [Pretty.str "pass"])]
+      in Pretty.chunks [head,
+        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
+          Pretty.str (print_python_string const), Pretty.str ")"])]
       end
       | print_python_func const { vs, eqs, ... } =
         let

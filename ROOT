@@ -26,6 +26,7 @@ session Python_Examples in "examples" = Python +
     Example_code_numerals
     Example_unused_arg
     Example_polymorphic_const
+    Example_no_eqs
   export_files (in "../python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
