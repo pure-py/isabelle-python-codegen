@@ -6,15 +6,10 @@ def weird(n):
     if (n == 0):
         return (1)
     else:
-        target = n
-        match target:
-            case 0:
-                x = (10)
-            case c if c >= 1:
-                a = (c - 1)
-                x = ((20 + a))
-            case _:
-                raise RuntimeError("match failed")
+        if (n == 0):
+            x = (10)
+        else:
+            x = ((20 + (max(0, n - 1))))
         return ((1 + x))
 
 def classify(n):
@@ -25,15 +20,10 @@ def classify(n):
     return ((1 + x))
 
 def nat_label(n):
-    target = n
-    match target:
-        case 0:
-            x = (10)
-        case c if c >= 1:
-            a = (c - 1)
-            x = ((20 + a))
-        case _:
-            raise RuntimeError("match failed")
+    if (n == 0):
+        x = (10)
+    else:
+        x = ((20 + (max(0, n - 1))))
     return ((1 + x))
 
 def abs_manual(x):
@@ -63,7 +53,7 @@ def describe_len(xs):
 
 classify_zero = (classify(0))
 
-abs_manual_neg = (abs_manual(-7))
+abs_manual_neg = (abs_manual(((- 7))))
 
 abs_manual_pos = (abs_manual(7))
 

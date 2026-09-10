@@ -3,6 +3,8 @@ chapter AFP
 session Python = HOL +
   description "A Python frontend for the Isabelle code generator."
   options [timeout = 300, document = false]
+  sessions
+    "HOL-Library"
   theories
     Python_Setup
 
@@ -18,6 +20,7 @@ session Python_Examples in "examples" = Python +
     Example_int_arith
     Example_nat
     Example_nat_pattern
+    Example_nat_edge_cases
     Example_records
     Example_record_ext
     Example_nested_case

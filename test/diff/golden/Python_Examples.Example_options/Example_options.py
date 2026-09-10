@@ -25,7 +25,7 @@ def describe_opt2(x0):
         case Option.Some(x):
             return ((x + 100))
         case Option.Nonea():
-            return (-1)
+            return ((- 1))
         case _:
             raise RuntimeError("match failed")
 

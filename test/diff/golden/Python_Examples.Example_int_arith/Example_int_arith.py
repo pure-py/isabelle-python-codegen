@@ -9,16 +9,16 @@ def checksum(x, y):
 
 zero_test = (0)
 
-neg_product = ((-3 * 4))
+neg_product = ((((- 3)) * 4))
 
-quotient_neg = ((-7 // 2))
+quotient_neg = ((((- 7)) // 2))
 
 quotient_pos = ((7 // 2))
 
-remainder_neg = ((-7 % 2))
+remainder_neg = ((((- 7)) % 2))
 
 remainder_pos = ((7 % 2))
 
-quotient_neg_divisor = ((7 // -2))
+quotient_neg_divisor = ((7 // ((- 2))))
 
-remainder_neg_divisor = ((7 % -2))
+remainder_neg_divisor = ((7 % ((- 2))))

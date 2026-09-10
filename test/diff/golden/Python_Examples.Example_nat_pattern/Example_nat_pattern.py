@@ -2,37 +2,25 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Num
 
-def fact(x0):
-    match x0:
-        case 0:
-            return (1)
-        case c if c >= 1:
-            n = (c - 1)
-            return ((((n + 1)) * fact(n)))
-        case _:
-            raise RuntimeError("match failed")
+def fact(n):
+    if (n == 0):
+        return (1)
+    else:
+        return (((((max(0, n - 1)) + 1)) * fact((max(0, n - 1)))))
 
 fact_5 = (fact(5))
 
-def countdown(x0):
-    match x0:
-        case 0:
-            return ([0])
-        case c if c >= 1:
-            n = (c - 1)
-            return ([(n + 1)] + countdown(n))
-        case _:
-            raise RuntimeError("match failed")
+def countdown(n):
+    if (n == 0):
+        return ([0])
+    else:
+        return ([((max(0, n - 1)) + 1)] + countdown((max(0, n - 1))))
 
-def nat_is_even(x0):
-    match x0:
-        case 0:
-            return (True)
-        case c if c >= 1:
-            n = (c - 1)
-            return (not nat_is_even(n))
-        case _:
-            raise RuntimeError("match failed")
+def nat_is_even(n):
+    if (n == 0):
+        return (True)
+    else:
+        return (not nat_is_even((max(0, n - 1))))
 
 is_even_7 = (nat_is_even(7))
 

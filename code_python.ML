@@ -144,13 +144,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
       indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")];
 
-    (* Peel consecutive Suc layers of term *)
-    fun dest_suc_chain t = case Code_Thingol.unfold_const_app t of
-      SOME ({ sym = Constant "Nat.Suc", ... }, [arg]) =>
-        let val (n, base) = dest_suc_chain arg in (n + 1, base) end
-      | _ => (0, t)
-
-    and dest_cons_chain t =
+    (* Peel consecutive Cons layers of term *)
+    fun dest_cons_chain t =
       case Code_Thingol.unfold_const_app t of
         SOME ({ sym = Constant "List.list.Cons", ... }, [x, xs]) =>
           let val (es, tail) = dest_cons_chain xs
@@ -163,9 +158,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           let val vars' = intro_vars [v] vars
           in (PCapture (lookup_var vars' v), [], [], vars') end
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
-          if sym = Constant "Nat.zero_nat_inst.zero_nat"
-          then (PLiteral (Pretty.str "0"), [], [], vars)
-          else if sym = Constant "List.list.Nil"
+          if sym = Constant "List.list.Nil"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
           else if is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
@@ -190,37 +183,21 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               | _ => error "unsupported tail of list Cons-chain pattern"
             end
         | _ =>
-          (case dest_suc_chain t of
-              (0, _) => (case Code_Thingol.unfold_const_app t of
-                  SOME ({ sym, ... }, args) =>
-                    let
-                      val (ps, guards, preamble, vars') = pattern_of_iterms vars args
-                    in
-                      if sym = Constant "Product_Type.Pair"
-                      then (PTuple ps, guards, preamble, vars')
-                      else (PClass (deresolve sym, ps), guards, preamble, vars')
-                    end
-                | NONE => error "bad term in pattern")
-            | (depth, base) =>
-              let
-                val (cname, vars1) = invent_name vars "c"
-                fun depth_guard cmp = GRaw (concat
-                  [Pretty.str cname, Pretty.str cmp, Pretty.str (string_of_int depth)])
-              in
-                case base of
-                  IVar NONE => (PCapture cname, [depth_guard ">="], [], vars1)
-                | IVar (SOME v) =>
-                  let
-                    val vars2 = intro_vars [v] vars1
-                    val bind = Pretty.block [Pretty.str (lookup_var vars2 v), Pretty.str " = (",
-                      Pretty.str cname, Pretty.str " - ", Pretty.str (string_of_int depth), Pretty.str ")"]
-                  in (PCapture cname, [depth_guard ">="], [bind], vars2) end
-                | IConst { sym, ... } =>
-                  if sym = Constant "Nat.zero_nat_inst.zero_nat"
-                  then (PCapture cname, [depth_guard "=="], [], vars1)
-                  else error "unsupported base of nat Suc-chain pattern"
-                | _ => error "unsupported base of nat Suc-chain pattern"
-              end))
+          (case Code_Thingol.unfold_const_app t of
+              SOME ({ sym, ... }, args) =>
+                if sym = Constant "Product_Type.Pair"
+                then
+                  let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
+                  in (PTuple ps, guards, preamble, vars') end
+                else if can deresolve sym
+                then
+                  let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
+                  in (PClass (deresolve sym, ps), guards, preamble, vars') end
+                else
+                  (* sym has no name in our namespace *)
+                  let val (name, vars') = invent_name vars "c"
+                  in (PCapture name, [GEq (name, t)], [], vars') end
+            | NONE => error "bad term in pattern"))
 
     and pattern_of_iterms vars ts =
       let

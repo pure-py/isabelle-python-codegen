@@ -36,8 +36,8 @@ def nested_then(x, y):
     else:
         return (3)
 
-nested_then_f = (nested_then(-1, 1))
+nested_then_f = (nested_then(((- 1)), 1))
 
-nested_then_tf = (nested_then(1, -1))
+nested_then_tf = (nested_then(1, ((- 1))))
 
 nested_then_tt = (nested_then(1, 1))

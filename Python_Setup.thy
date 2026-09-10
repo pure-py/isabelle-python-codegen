@@ -1,5 +1,5 @@
 theory Python_Setup
-    imports Main
+    imports Main "HOL-Library.Code_Target_Int" "HOL-Library.Code_Target_Nat"
 begin
 
 ML_file \<open>code_python.ML\<close>
@@ -50,6 +50,7 @@ setup \<open>
 code_printing
     type_constructor Int.int \<rightharpoonup> (Python) "int"
   | constant "0 :: int" \<rightharpoonup> (Python) "0"
+  | constant "1 :: int" \<rightharpoonup> (Python) "1"
   | constant "(+) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ + _)"
   | constant "(-) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ - _)"
   | constant "uminus :: int \<Rightarrow> int" \<rightharpoonup> (Python) "(- _)"
@@ -65,34 +66,10 @@ code_printing
   | constant "min" \<rightharpoonup> (Python) "min(_, _)"
   | constant "max" \<rightharpoonup> (Python) "max(_, _)"
 
-lemma one_int_code [code_unfold]:
-  "(1::int) = Int.Pos Num.One"
-  by simp
-
-setup \<open>
-  (fn target =>
-    Numeral.add_code \<^const_name>\<open>Int.Pos\<close> I
-      Code_Printer.literal_numeral target
-    #> Numeral.add_code \<^const_name>\<open>Int.Neg\<close> (~)
-      Code_Printer.literal_numeral target)
-    "Python"
-\<close>
-
-setup \<open>
-  let
-    open Code_Thingol Code_Printer;
-
-    fun pretty literals print_term thm vars fxy [(x, _)] =
-      let val p = print_term vars NOBR x
-      in Pretty.block [Pretty.str "((", p, Pretty.str " > 0) - (", p, Pretty.str " < 0))"] end;
-
-  in
-    (fn target =>
-      Code_Target.set_printings (Code_Symbol.Constant (\<^const_name>\<open>Int.sgn_int_inst.sgn_int\<close>,
-        [(target, SOME (complex_const_syntax (1, pretty)))])))
-    "Python"
-  end
-\<close>
+(* Bridge between int and integer *)
+code_printing
+    constant Code_Numeral.int_of_integer \<rightharpoonup> (Python) "_"
+  | constant Code_Numeral.integer_of_int \<rightharpoonup> (Python) "_"
 
 (* nats *)
 code_printing
@@ -109,6 +86,10 @@ code_printing
   | constant "(\<le>) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
   | constant "(<) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
 
+code_printing
+    constant Code_Numeral.nat_of_integer \<rightharpoonup> (Python) "_"
+  | constant Code_Numeral.integer_of_nat \<rightharpoonup> (Python) "_"
+
 setup \<open>
   Numeral.add_code \<^const_name>\<open>Num.nat_of_num\<close> I Code_Printer.literal_numeral "Python"
 \<close>
@@ -117,6 +98,7 @@ setup \<open>
 code_printing
     type_constructor Code_Numeral.integer \<rightharpoonup> (Python) "int"
   | constant "0 :: Code_Numeral.integer" \<rightharpoonup> (Python) "0"
+  | constant "1 :: Code_Numeral.integer" \<rightharpoonup> (Python) "1"
   | constant "(+) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ + _)"
   | constant "(-) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ - _)"
   | constant "uminus :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(- _)"
