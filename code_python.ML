@@ -1,6 +1,8 @@
 signature CODE_PYTHON =
 sig
   val target: string
+  val add_transparent_wrapper_sym: string -> theory -> theory
+  val add_undefined_sym: string -> theory -> theory
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -11,6 +13,36 @@ open Basic_Code_Thingol;
 open Code_Printer;
 
 val target = "Python";
+
+structure Transparent_Wrapper_Data = Theory_Data
+(
+  type T = unit Symtab.table
+  val empty = Symtab.empty
+  val merge = Symtab.merge (K true)
+);
+
+fun add_transparent_wrapper_sym name = Transparent_Wrapper_Data.map (Symtab.update (name, ()));
+
+fun is_transparent_wrapper_sym thy (Constant name) =
+      Symtab.defined (Transparent_Wrapper_Data.get thy) name
+  | is_transparent_wrapper_sym _ _ = false;
+
+fun strip_transparent_wrappers thy t =
+  case Code_Thingol.unfold_const_app t of
+    SOME ({ sym, ... }, [arg]) =>
+      if is_transparent_wrapper_sym thy sym
+      then strip_transparent_wrappers thy arg
+      else t
+  | _ => t
+
+structure Undefined_Data = Theory_Data
+(
+  type T = unit Symtab.table
+  val empty = Symtab.empty
+  val merge = Symtab.merge (K true)
+);
+
+fun add_undefined_sym name = Undefined_Data.map (Symtab.update (name, ()));
 
 val python_reserved_words =
   ["False", "None", "True", "and", "as", "assert", "await", "break", "class",
@@ -140,6 +172,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     datatype python_guard = GEq of string * iterm | GRaw of Pretty.T;
 
+    (* A "preamble" entry is a statement that needs to run before the
+       expression that depends on it *)
+    datatype python_preamble = PBind of string * iterm | PRaw of Pretty.T;
+
     val fallthrough_arm = Pretty.chunks
       [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
       indent_block 4 (Pretty.str "raise RuntimeError(\"match failed\")")];
@@ -152,6 +188,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (x :: es, tail) end
       | _ => ([], t);
     
+    (* Allows us to detect constructors that have been pruned by custom printers *)
+    fun safe_is_constr sym = (case try is_constr sym of SOME b => b | NONE => false)
+    
     (* Create patterns from iterms *)
     fun pattern_of_iterm vars (IVar NONE) = (PWild, [], [], vars)
       | pattern_of_iterm vars (IVar (SOME v)) =
@@ -160,7 +199,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
           if sym = Constant "List.list.Nil"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
-          else if is_constr sym andalso args_num sym = 0
+          else if safe_is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
           else
             (* fallback, create a new name + attach guards *)
@@ -189,6 +228,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 then
                   let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
                   in (PTuple ps, guards, preamble, vars') end
+                else if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym andalso length args = 1
+                then pattern_of_iterm vars (hd args)
                 else if can deresolve sym
                 then
                   let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
@@ -207,6 +248,28 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             in (p :: ps, gs @ g, pre @ pr, vs') end)
           ts ([], [], [], vars)
       in (rev rev_ps, guards, preamble, vars') end; 
+
+    fun is_sole_constr (Constant const) =
+          (case Code.get_type_of_constr_or_abstr (Proof_Context.theory_of ctxt) const of
+            SOME (tyco, false) =>
+              let val ((_, constrs), _) = Code.get_type (Proof_Context.theory_of ctxt) tyco
+              in length constrs = 1 end
+          | _ => false)
+      | is_sole_constr _ = false
+
+    fun exhaustive (IVar _) = true
+      | exhaustive (IConst { sym, ... }) =
+          safe_is_constr sym andalso args_num sym = 0 andalso is_sole_constr sym
+      | exhaustive t =
+          (case Code_Thingol.unfold_const_app t of
+            SOME ({ sym, ... }, args) =>
+              if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym 
+                andalso length args = 1
+              then exhaustive (hd args)
+              else is_sole_constr sym andalso forall exhaustive args
+          | NONE => false)
+
+    fun is_trivial_pattern _ t = exhaustive t
 
     fun print_python_pattern (PCapture v) = Pretty.str v
       | print_python_pattern PWild = Pretty.str "_"
@@ -236,8 +299,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     and print_case_header some_thm vars pattern_pretty guards =
       case print_guard some_thm vars guards of
           NONE => Pretty.block [concat [Pretty.str "case", pattern_pretty], Pretty.str ":"]
-        | SOME guard => Pretty.block [concat [Pretty.str "case", pattern_pretty,
-            Pretty.str "if", guard], Pretty.str ":"]
+        | SOME guard => Pretty.block [concat [Pretty.str "case", pattern_pretty],
+            Pretty.str " if (", guard, Pretty.str "):"]
 
     and print_case_arm some_thm vars (pattern, body_pretty) =
       let
@@ -245,8 +308,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val header = case print_guard some_thm vars' guards of
             NONE => Pretty.block [concat [Pretty.str "case",
               print_python_pattern p], Pretty.str ":"]
-          | SOME guard => Pretty.block [concat [Pretty.str "case", print_python_pattern p,
-              Pretty.str "if", guard], Pretty.str ":"]
+          | SOME guard => Pretty.block [concat [Pretty.str "case", print_python_pattern p],
+              Pretty.str " if (", guard, Pretty.str "):"]
         val body = Pretty.chunks (preamble @ [body_pretty vars'])
       in (header, vars', body) end
   
@@ -257,18 +320,43 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             val (b1, vars1, t1') = anf_term vars t1;
             val (b2, vars2, t2') = anf_term vars1 t2;
           in (b1 @ b2, vars2, t1' `$ t2') end
-      | anf_term vars (t as (_, _) `|=> (_, _)) = ([], vars, t)
+      | anf_term vars (t as (_, _) `|=> (_, _)) =
+          if is_stmt_free t
+          then ([], vars, t)
+          else
+            let
+              fun strip_lambdas vs ((param, _) `|=> (body, _)) =
+                    let
+                      val vs' = intro_vars (map_filter I [param]) vs
+                      val (ps, vs'', body') = strip_lambdas vs' body
+                    in (param :: ps, vs'', body') end
+                | strip_lambdas vs body = ([], vs, body)
+              val (params, vars1, body) = strip_lambdas vars t
+              val (fname, vars2) = invent_name vars1 "lam"
+              val (param_prettys, vars3) = fold_map
+                (fn NONE => (fn vs => let val (n, vs') = invent_name vs "unused"
+                      in (Pretty.str n, vs') end)
+                  | SOME v => (fn vs => (Pretty.str (lookup_var vs v), vs)))
+                params vars2
+              val head = Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vars3 fname),
+                Pretty.enum "," "(" ")" param_prettys, Pretty.str ":"]
+              val body_pretty = print_tail_expr NONE
+                (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
+                  print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
+                vars3 body
+              val def_stmt = Pretty.chunks [head, indent_block 4 body_pretty]
+              in ([PRaw def_stmt], vars3, IVar (SOME fname)) end
       | anf_term vars (t as ICase _) =
           let val (x, vars') = invent_name vars "x"
-          in ([(x, t)], vars', IVar (SOME x)) end
+          in ([PBind (x, t)], vars', IVar (SOME x)) end
 
     and print_if_then_else some_thm finish vars target t_branch e_branch =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
         val cond = print_python_expr const_syntax some_thm vars1 NOBR target';
       in
-        Pretty.chunks (map (print_binding some_thm vars1) target_bindings @
-          [Pretty.block [Pretty.str "if ", cond, Pretty.str ":"],
+        Pretty.chunks (map (print_preamble some_thm vars1) target_bindings @
+          [Pretty.block [Pretty.str "if (", cond, Pretty.str "):"],
            indent_block 4 (print_tail_expr some_thm finish vars1 t_branch),
            Pretty.str "else:",
            indent_block 4 (print_tail_expr some_thm finish vars1 e_branch)])
@@ -293,7 +381,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         | NONE => print_case_block some_thm finish vars target clauses)
       | print_tail_expr some_thm finish vars t =
           let val (bindings, vars', t') = anf_term vars t
-          in Pretty.chunks (map (print_binding some_thm vars') bindings @ [finish vars' t']) end
+          in Pretty.chunks (map (print_preamble some_thm vars') bindings @ [finish vars' t']) end
 
     and print_binding some_thm vars (name, t) =
       print_tail_expr some_thm
@@ -301,21 +389,31 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
         vars t
 
+    and print_preamble some_thm vars (PBind (name, t)) = print_binding some_thm vars (name, t)
+      | print_preamble _ _ (PRaw p) = p
+
     and print_case_block some_thm finish vars target clauses =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
         val (tvar, vars0) = invent_name vars1 "target"
-        val assign = concat [Pretty.str tvar, Pretty.str "=",
-          print_python_expr const_syntax some_thm vars1 NOBR target'];
+        val assign = Pretty.block [Pretty.str tvar, Pretty.str " = (",
+          print_python_expr const_syntax some_thm vars1 NOBR target', Pretty.str ")"];
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =
           let
             val (header, _, body) = print_case_arm some_thm vars0
               (pattern, fn vars' => print_tail_expr some_thm finish vars' term)
           in Pretty.chunks [header, indent_block 4 body] end;
+        (* A clause list already ending in a bare-variable (or wildcard)
+           pattern is exhaustive on its own *)
+        val last_clause_pattern = case rev clauses of (p, _) :: _ => SOME p | [] => NONE
+        val already_exhaustive = case last_clause_pattern of
+            SOME p => is_trivial_pattern vars0 p
+          | NONE => false
+        val arms = map one_arm clauses @ (if already_exhaustive then [] else [fallthrough_arm])
       in
-        Pretty.chunks (map (print_binding some_thm vars1) target_bindings @
-          [assign, match_head, indent_block 4 (Pretty.chunks (map one_arm clauses @ [fallthrough_arm]))])
+        Pretty.chunks (map (print_preamble some_thm vars1) target_bindings @
+          [assign, match_head, indent_block 4 (Pretty.chunks arms)])
       end
 
     and print_python_expr const_syntax some_thm vars fxy t =
@@ -342,7 +440,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               Pretty.str ": ",
               print_python_expr const_syntax some_thm vars' NOBR t']
             else
-              error "TODO: hoist nested def for non-expression lambda body"
+              error "internal error: non-expression lambda, anf_term should have hoisted it"
           end
       | ICase { clauses = [], ... } => Pretty.str "raise RuntimeError(\"empty case\")"
       | ICase _ =>
@@ -365,7 +463,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             ((Pretty.str o deresolve) (Class_Instance inst))
             (map_filter (print_dicts some_thm vars BR o snd) dictss)
       | print_plain_dict _ _ (Dict_Var { var, index, length, ... }) =
-          Pretty.str (var ^ "_dict" ^ (if length = 1 then "" else string_of_int (index + 1)))
+          if length = 1
+          then Pretty.str (var ^ "_dict")
+          else Pretty.str (var ^ "_dict[" ^ string_of_int index ^ "]")
 
     and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
@@ -408,12 +508,34 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         in call :: curried_pretty end
       end
 
-    and print_app const_syntax some_thm vars fxy (const, ts) =
-      if List.exists (fn name => #sym const = Constant name) undefineds
+    and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
+      if List.exists (fn name => sym = Constant name) undefineds
       then Pretty.str ("raise NotImplementedError(" ^
-        print_python_string (Code_Symbol.default_base (#sym const)) ^ ")")
-      else gen_print_app (print_app_expr const_syntax)
-        (print_python_expr const_syntax) const_syntax some_thm vars fxy (const, ts)
+        print_python_string (Code_Symbol.default_base sym) ^ ")")
+      else
+        let
+          fun stock fxy' ts' =
+            gen_print_app (print_app_expr const_syntax) (print_python_expr const_syntax)
+              const_syntax some_thm vars fxy' (const, ts')
+        in
+          case sym of
+            Constant name =>
+              (case const_syntax name of
+                SOME (_, Plain_printer s) =>
+                  if null ts then Pretty.str s
+                  else applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
+                        (Pretty.str s) ts
+              | SOME (wanted, Complex_printer _) =>
+                  if length ts > wanted
+                  then
+                    let val (ts1, ts2) = chop wanted ts
+                    in applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
+                        (stock APP ts1) ts2
+                    end
+                  else stock fxy ts
+              | NONE => stock fxy ts)
+          | _ => stock fxy ts
+        end
 
     fun print_python_typedef tyco { cnstrs, ... } =
       let
@@ -422,6 +544,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           case Record.get_info thy (Long_Name.qualifier tyco) of
               SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
             | NONE => NONE
+        fun python_safe_ident s =
+          String.translate (fn c =>
+              if Char.isAlphaNum c orelse c = #"_" then String.str c else "_") s
         fun print_constructor { name, arg_tys, ... } =
           let
             val name_ctxt = Name.declare "self" (snd reserved)
@@ -437,7 +562,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                     else map fst named_fields
                 | NONE => map fst named_fields
             val fields = labels
-              |> map (fn fname => Pretty.str (fname ^ ": Any"))
+              |> map (fn fname => Pretty.str (python_safe_ident fname ^ ": Any"))
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
              Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
@@ -452,17 +577,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val super_fields = super
           |> map (fn (self, super) => Pretty.str
             (Long_Name.base_name (deresolve_classrel (self, super)) ^ ": Any"))
+        val all_fields = super_fields @ fields
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
          Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
-         indent_block 4 (Pretty.chunks (super_fields @ fields))]
+        indent_block 4 (if null all_fields then Pretty.str "pass" else Pretty.chunks all_fields)]
       end;
 
-    fun print_dict_args some_thm vars vs = map_filter (fn (v, sort) =>
-          print_dicts some_thm vars BR
-            (map_index (fn (i, _) => Dict ([],
-              Dict_Var { var = v, index = i, length = length sort, 
-                class = nth sort i, unique = true })) sort)) vs
+    fun print_dict_args _ _ vs = map_filter (fn (v, sort) =>
+      if null sort then NONE else SOME (Pretty.str (v ^ "_dict"))) vs
 
     fun print_python_instance (target', class) { vs, tyco, inst_params, superinsts, ... } =
       let
@@ -500,12 +623,24 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           Pretty.str (deresolve_const const),
           Pretty.enum "," "(" ")" (
             dicts @
-            map (fn NONE => Pretty.str "_" 
-                  | SOME v => Pretty.str (lookup_var vctxt v)
-            ) params
+          map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
+                      | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
+            params
           ),
           Pretty.str ":"
       ]
+
+    fun print_undefined_func_stub const { vs, ty, ... } =
+      let
+        val arity = Code_Thingol.unfold_fun ty |> fst |> length
+        val vctxt = intro_vars (map fst vs) reserved
+        val (params, vctxt) = invent_names vctxt "a" arity
+        val dict_params = print_dict_args NONE vctxt vs
+        val head = print_func_head const vctxt dict_params (map SOME params)
+      in Pretty.chunks [head,
+        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
+          Pretty.str (print_python_string const), Pretty.str ")"])]
+      end
 
     (* This functions needs to distinguish different cases:
      *  - functions without any code equations => print `pass`
@@ -543,11 +678,16 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val (simple, simple_params) = 
             case eqs of 
               [ { patterns, ... } ] => 
-                if forall Code_Thingol.is_IVar patterns 
+                let val stripped = map 
+                  (strip_transparent_wrappers (Proof_Context.theory_of ctxt)) 
+                  patterns 
+                in
+                  if forall Code_Thingol.is_IVar stripped
                 then (true, map (
                   fn IVar x => x 
-                   | _ => raise Fail "should not happen") patterns)
+                     | _ => raise Fail "should not happen") stripped)
                 else (false, [])
+                end
               | _ => (false, [])
           val vars1 = vctxt
             |> intro_base_names_for (is_none o const_syntax) deresolve (map #rhs eqs)
@@ -593,15 +733,25 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 in Pretty.chunks [header,
                     indent_block 4 (Pretty.chunks (preamble @ [print_rhs thm vars' rhs]))]
                 end
+              (* Same reasoning as print_case_block: if the last equation's
+                 own patterns are already all bare variables, that arm is
+                 unconditionally exhaustive on its own *)
+              val last_is_exhaustive = case rev eqs of
+                  { patterns, ... } :: _ => forall (is_trivial_pattern vars2) patterns
+                | [] => false
+              val arms = map print_one_equation eqs @
+                (if last_is_exhaustive then [] else [fallthrough_arm])
             in Pretty.chunks
               [head, indent_block 4 (Pretty.chunks
                 [Pretty.block [Pretty.str "match ", scrutinee, Pretty.str ":"],
-                 indent_block 4 (Pretty.chunks (map print_one_equation eqs @ [fallthrough_arm]))])]
+                 indent_block 4 (Pretty.chunks arms)])]
             end
         end;
 
     fun print_stmt (Constant const, (_, Fun f)) =
-          print_python_func const f
+          if member (op =) undefineds const
+          then print_undefined_func_stub const f
+          else print_python_func const f
       | print_stmt (Type_Constructor tyco, (_, Datatype d)) =
           print_python_typedef tyco d
       | print_stmt (Type_Class sym, (_, Class class)) =
@@ -655,6 +805,16 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
             Constant c => is_none (const_syntax c)
           | _ => true)
         program;
+
+    val program =
+      Code_Symbol.Graph.fold (fn (sym, (stmt, _)) =>
+          case (sym, stmt) of
+            (Class_Instance _, Code_Thingol.Classinst { class, superinsts, ... }) =>
+              fold (fn (super_class, _) =>
+                  Code_Symbol.Graph.add_edge (sym, Class_Relation (class, super_class)))
+                superinsts
+          | _ => I)
+        program program;
 
     val { deresolver, flat_program = python_program } =
       python_program_of_program ctxt module_name (Name.make_context reserved_syms)
@@ -818,7 +978,9 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 val serializer : Code_Target.serializer =
   Code_Target.parse_args (
     (Scan.optional (Args.$$$ "python_module" |-- Args.name) "")
-    >> (fn python_module => fn lthy => serialize_python [] python_module lthy));
+    >> (fn python_module => fn lthy =>
+          serialize_python (Symtab.keys (Undefined_Data.get (Proof_Context.theory_of lthy)))
+            python_module lthy));
 
 val _ = Theory.setup
   (Code_Target.add_language

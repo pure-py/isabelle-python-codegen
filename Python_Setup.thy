@@ -4,6 +4,8 @@ begin
 
 ML_file \<open>code_python.ML\<close>
 
+declare [[default_code_width = 2000]]
+
 code_identifier
   code_module Code_Target_Nat \<rightharpoonup> (Python) Arith
 | code_module Code_Target_Int \<rightharpoonup> (Python) Arith
@@ -94,6 +96,13 @@ setup \<open>
   Numeral.add_code \<^const_name>\<open>Num.nat_of_num\<close> I Code_Printer.literal_numeral "Python"
 \<close>
 
+code_printing
+  constant Code_Target_Nat.Nat \<rightharpoonup> (Python) "_"
+
+setup \<open>
+  Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Target_Nat.Nat\<close>
+\<close>
+
 (* Code_Numeral: integer/natural (target-language numerals) *)
 code_printing
     type_constructor Code_Numeral.integer \<rightharpoonup> (Python) "int"
@@ -105,10 +114,22 @@ code_printing
   | constant "(*) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ * _)"
   | constant "(div) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ '/'/ _)"
   | constant "(mod) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ % _)"
+  | constant Code_Numeral.divmod_abs \<rightharpoonup> (Python) "divmod(_, _)"
   | constant "HOL.equal :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
   | constant "(\<le>) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
   | constant "(<) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
   | constant "abs :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "abs'(_')"
+
+unbundle bit_operations_syntax
+
+code_printing
+    constant Code_Numeral.dup \<rightharpoonup> (Python) "(2 * _)"
+  | constant "(AND) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ & _)"
+  | constant "(OR) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ | _)"
+  | constant "(XOR) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ ^ _)"
+  | constant "NOT :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(~ _)"
+
+unbundle no bit_operations_syntax
 
 setup \<open>
   (fn target =>
@@ -132,6 +153,13 @@ code_printing
   | constant "(\<le>) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
   | constant "(<) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
   | constant Code_Numeral.natural_of_integer \<rightharpoonup> (Python) "max(0, _)"
+
+code_printing
+  constant Code_Numeral.Nat \<rightharpoonup> (Python) "_"
+
+setup \<open>
+  Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.Nat\<close>
+\<close>
 
 (* Lists *)
 code_printing
@@ -178,5 +206,19 @@ code_printing
   | constant Product_Type.Pair \<rightharpoonup> (Python) "(_, _)"
   | constant fst \<rightharpoonup> (Python) "_[0]"
   | constant snd \<rightharpoonup> (Python) "_[1]"
+
+setup \<open>
+  Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.int_of_integer\<close>
+  #> Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.integer_of_int\<close>
+  #> Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.nat_of_integer\<close>
+  #> Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.integer_of_nat\<close>
+\<close>
+
+setup \<open>
+  Code_Python.add_undefined_sym \<^const_name>\<open>Code_Numeral.sub\<close>
+  #> Code_Python.add_undefined_sym \<^const_name>\<open>Bit_Operations.and_not_num\<close>
+  #> Code_Python.add_undefined_sym \<^const_name>\<open>Bit_Operations.or_not_num_neg\<close>
+  #> Code_Python.add_undefined_sym \<^const_name>\<open>Code_Target_Nat.natural\<close>
+\<close>
 
 end

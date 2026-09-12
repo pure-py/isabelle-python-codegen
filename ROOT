@@ -31,6 +31,10 @@ session Python_Examples in "examples" = Python +
     Example_polymorphic_const
     Example_no_eqs
     Example_nested_if
+    Example_transparent_wrapper
+    Example_lambda_case
+    Example_classrel_base
+    Example_classrel
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
@@ -38,4 +42,18 @@ session Python_Test_Quick in "test/quick" = Python +
   options [timeout = 300]
   theories [document = false]
     Quick_Test
+  export_files (in "python_out") "*:**"
+
+session Python_Test_Slow in "test/slow" = "HOL-Library" +
+  description "Slow test session: a slimmed subset of the HOL-Library candidate set"
+  options [timeout = 1200]
+  sessions
+    Python
+    "HOL-Number_Theory"
+    "HOL-Data_Structures"
+    "HOL-Examples"
+    "HOL-Computational_Algebra"
+  theories [document = false, condition = ISABELLE_PYTHON]
+    Candidates
+    Generate
   export_files (in "python_out") "*:**"
