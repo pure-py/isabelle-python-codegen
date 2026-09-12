@@ -17,15 +17,11 @@ def pz_update(pza, x1):
     match (pza, x1):
         case (pzaa, point_exta(px, py, point3d_exta(pz, more))):
             return (point_exta(px, py, point3d_exta((pzaa(pz)), more)))
-        case _:
-            raise RuntimeError("match failed")
 
 def pz(x0):
     match x0:
         case point_exta(px, py, point3d_exta(pz, more)):
             return (pz)
-        case _:
-            raise RuntimeError("match failed")
 
 def move_z(p, dz):
     return (pz_update(lambda _: (pz(p) + dz), p))
@@ -34,15 +30,11 @@ def py(x0):
     match x0:
         case point_exta(px, py, more):
             return (py)
-        case _:
-            raise RuntimeError("match failed")
 
 def px(x0):
     match x0:
         case point_exta(px, py, more):
             return (px)
-        case _:
-            raise RuntimeError("match failed")
 
 def point3d_sum(p):
     return ((((px(p) + py(p))) + pz(p)))

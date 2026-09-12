@@ -13,8 +13,6 @@ def add_points(x0, x1):
     match (x0, x1):
         case ((x1a, y1), (x2, y2)):
             return ((((x1a + x2)), ((y1 + y2))))
-        case _:
-            raise RuntimeError("match failed")
 
 point_swapped = (swap_pair(point))
 

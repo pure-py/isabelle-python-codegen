@@ -187,7 +187,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           let val (es, tail) = dest_cons_chain xs
           in (x :: es, tail) end
       | _ => ([], t);
-    
+
     (* Allows us to detect constructors that have been pruned by custom printers *)
     fun safe_is_constr sym = (case try is_constr sym of SOME b => b | NONE => false)
     
@@ -247,7 +247,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             let val (p, g, pr, vs') = pattern_of_iterm vs t
             in (p :: ps, gs @ g, pre @ pr, vs') end)
           ts ([], [], [], vars)
-      in (rev rev_ps, guards, preamble, vars') end; 
+      in (rev rev_ps, guards, preamble, vars') end;
 
     fun is_sole_constr (Constant const) =
           (case Code.get_type_of_constr_or_abstr (Proof_Context.theory_of ctxt) const of
@@ -357,9 +357,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in
         Pretty.chunks (map (print_preamble some_thm vars1) target_bindings @
           [Pretty.block [Pretty.str "if (", cond, Pretty.str "):"],
-           indent_block 4 (print_tail_expr some_thm finish vars1 t_branch),
-           Pretty.str "else:",
-           indent_block 4 (print_tail_expr some_thm finish vars1 e_branch)])
+          indent_block 4 (print_tail_expr some_thm finish vars1 t_branch),
+          Pretty.str "else:",
+          indent_block 4 (print_tail_expr some_thm finish vars1 e_branch)])
       end
 
     and get_if_then_else [(p1, t1), (p2, t2)] =
@@ -551,7 +551,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           let
             val name_ctxt = Name.declare "self" (snd reserved)
             val named_fields = Name.invent_names name_ctxt "a" arg_tys
-            val labels = 
+            val labels =
               case field_names of
                   SOME names =>
                     if length names <= length named_fields
@@ -580,7 +580,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val all_fields = super_fields @ fields
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
-         Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
+        Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
         indent_block 4 (if null all_fields then Pretty.str "pass" else Pretty.chunks all_fields)]
       end;
 
@@ -619,15 +619,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     fun print_func_head const vctxt dicts params =
       Pretty.block [
-          Pretty.str "def ", 
-          Pretty.str (deresolve_const const),
-          Pretty.enum "," "(" ")" (
-            dicts @
+        Pretty.str "def ",
+        Pretty.str (deresolve_const const),
+        Pretty.enum "," "(" ")" (
+          dicts @
           map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
                       | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
             params
-          ),
-          Pretty.str ":"
+        ),
+        Pretty.str ":"
       ]
 
     fun print_undefined_func_stub const { vs, ty, ... } =
@@ -675,18 +675,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           (* a `simple` function only has one equations, where all arguments
              are bare variables (so no destructuring needed), so it can be
              printed as an ordinary function rather than needing match/case *)
-          val (simple, simple_params) = 
-            case eqs of 
-              [ { patterns, ... } ] => 
+          val (simple, simple_params) =
+            case eqs of
+              [ { patterns, ... } ] =>
                 let val stripped = map 
                   (strip_transparent_wrappers (Proof_Context.theory_of ctxt)) 
                   patterns 
                 in
                   if forall Code_Thingol.is_IVar stripped
-                then (true, map (
-                  fn IVar x => x 
+                  then (true, map (
+                    fn IVar x => x
                      | _ => raise Fail "should not happen") stripped)
-                else (false, [])
+                  else (false, [])
                 end
               | _ => (false, [])
           val vars1 = vctxt

@@ -46,13 +46,9 @@ class describable_verbose:
     describe_verbose: Callable
 
 def describable_verbose_color():
-    return describable_verbose(describable_describable_verbose =
-                                 describable_color(),
-                                describe_verbose =
-                                  lambda a: describe_verbose_color(a))
+    return describable_verbose(describable_describable_verbose = describable_color(), describe_verbose = lambda a: describe_verbose_color(a))
 
 def announce_verbose(a_dict, x):
-    return (a_dict.describable_describable_verbose.describe(x) + " -- " +
-              a_dict.describe_verbose(x))
+    return (a_dict.describable_describable_verbose.describe(x) + " -- " + a_dict.describe_verbose(x))
 
 announce_verbose_red = (announce_verbose(describable_verbose_color(), Red()))

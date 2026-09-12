@@ -56,10 +56,7 @@ class labeled_measured:
     full_description: Callable
 
 def labeled_measured_item():
-    return labeled_measured(labeled_labeled_measured = labeled_item(),
-                             measured_labeled_measured = measured_item(),
-                             full_description =
-                               lambda a: full_description_item(a))
+    return labeled_measured(labeled_labeled_measured = labeled_item(), measured_labeled_measured = measured_item(), full_description = lambda a: full_description_item(a))
 
 @dataclass(frozen=True)
 class Cat:
@@ -113,25 +110,16 @@ class tagged_extra:
     tag_extra: Callable
 
 def tagged_verbose_animal():
-    return tagged_verbose(tagged_tagged_verbose = tagged_animal(),
-                           tag_verbose = lambda a: tag_verbose_animal(a))
+    return tagged_verbose(tagged_tagged_verbose = tagged_animal(), tag_verbose = lambda a: tag_verbose_animal(a))
 
 def tagged_extra_animal():
-    return tagged_extra(tagged_verbose_tagged_extra = tagged_verbose_animal(),
-                         tag_extra = lambda a: tag_extra_animal(a))
+    return tagged_extra(tagged_verbose_tagged_extra = tagged_verbose_animal(), tag_extra = lambda a: tag_extra_animal(a))
 
 def announce_chain(a_dict, x):
-    return (a_dict.tagged_verbose_tagged_extra.tagged_tagged_verbose.tag(x) +
-              " | " +
-              a_dict.tagged_verbose_tagged_extra.tag_verbose(x) +
-              " | " +
-              a_dict.tag_extra(x))
+    return (a_dict.tagged_verbose_tagged_extra.tagged_tagged_verbose.tag(x) + " | " + a_dict.tagged_verbose_tagged_extra.tag_verbose(x) + " | " + a_dict.tag_extra(x))
 
 def announce_multi(a_dict, x):
-    return (a_dict.labeled_labeled_measured.label_of(x) + " (" +
-              a_dict.measured_labeled_measured.size_label(x) +
-              ") -- " +
-              a_dict.full_description(x))
+    return (a_dict.labeled_labeled_measured.label_of(x) + " (" + a_dict.measured_labeled_measured.size_label(x) + ") -- " + a_dict.full_description(x))
 
 announce_chain_cat = (announce_chain(tagged_extra_animal(), Cat()))
 

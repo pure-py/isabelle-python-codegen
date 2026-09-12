@@ -3,16 +3,16 @@ from typing import Any, Callable
 import Num
 
 def grade_code(score):
-    if (score < 60):
+    if ((score < 60)):
         return (0)
     else:
-        if (score < 70):
+        if ((score < 70)):
             return (1)
         else:
-            if (score < 80):
+            if ((score < 80)):
                 return (2)
             else:
-                if (score < 90):
+                if ((score < 90)):
                     return (3)
                 else:
                     return (4)
@@ -28,8 +28,8 @@ grade_d = (grade_code(65))
 grade_f = (grade_code(40))
 
 def nested_then(x, y):
-    if (0 < x):
-        if (0 < y):
+    if ((0 < x)):
+        if ((0 < y)):
             return (1)
         else:
             return (2)

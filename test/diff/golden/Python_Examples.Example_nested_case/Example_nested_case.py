@@ -3,31 +3,31 @@ from typing import Any, Callable
 import Num
 
 def weird(n):
-    if (n == 0):
+    if ((n == 0)):
         return (1)
     else:
-        if (n == 0):
+        if ((n == 0)):
             x = (10)
         else:
             x = ((20 + (max(0, n - 1))))
         return ((1 + x))
 
 def classify(n):
-    if (n == 0):
+    if ((n == 0)):
         x = (100)
     else:
         x = (200)
     return ((1 + x))
 
 def nat_label(n):
-    if (n == 0):
+    if ((n == 0)):
         x = (10)
     else:
         x = ((20 + (max(0, n - 1))))
     return ((1 + x))
 
 def abs_manual(x):
-    if (x < 0):
+    if ((x < 0)):
         return ((- x))
     else:
         return (x)
@@ -41,7 +41,7 @@ weird_five = (weird(5))
 weird_zero = (weird(0))
 
 def describe_len(xs):
-    target = xs
+    target = (xs)
     match target:
         case []:
             x = (0)
