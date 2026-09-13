@@ -6,6 +6,7 @@ session Python = HOL +
   sessions
     "HOL-Library"
   theories
+    Python
     Python_Setup
 
 session Python_Examples in "examples" = Python +
