@@ -592,7 +592,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         indent_block 4 (if null all_fields then Pretty.str "pass" else Pretty.chunks all_fields)]
       end;
 
-    fun print_dict_args _ _ vs = map_filter (fn (v, sort) =>
+    fun print_dict_args vs = map_filter (fn (v, sort) =>
       if null sort then NONE else SOME (Pretty.str (v ^ "_dict"))) vs
 
     fun print_python_instance (target', class) { vs, tyco, inst_params, superinsts, ... } =
@@ -622,7 +622,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
         val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
-          Pretty.enum "," "(" ")" (print_dict_args NONE tyvars vs), Pretty.str ":"]
+          Pretty.enum "," "(" ")" (print_dict_args vs), Pretty.str ":"]
       in Pretty.chunks [head, indent_block 4 body] end;
 
     fun print_func_head const vctxt dicts params =
@@ -643,7 +643,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val arity = Code_Thingol.unfold_fun ty |> fst |> length
         val vctxt = intro_vars (map fst vs) reserved
         val (params, vctxt) = invent_names vctxt "a" arity
-        val dict_params = print_dict_args NONE vctxt vs
+        val dict_params = print_dict_args vs
         val head = print_func_head const vctxt dict_params (map SOME params)
       in Pretty.chunks [head,
         indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
@@ -687,7 +687,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val params = if simple then simple_params
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
-          val dict_params = print_dict_args NONE vars2 vs
+          val dict_params = print_dict_args vs
           (* a simple function without parameters and dictionary arguments can
              be printed as a plain value (i.e., an assignment x = ...) *)
           val prints_as_value = simple andalso null params andalso null dict_params
