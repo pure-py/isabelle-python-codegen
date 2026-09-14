@@ -293,8 +293,6 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     fun print_python_pattern (PCapture v) = Pretty.str v
       | print_python_pattern PWild = Pretty.str "_"
       | print_python_pattern (PLiteral p) = p
-      | print_python_pattern (PClass (name, [])) =
-          Pretty.block [Pretty.str name, Pretty.str "()"]
       | print_python_pattern (PTuple ps) =
           Pretty.enum "," "(" ")" (map print_python_pattern ps)
       | print_python_pattern (PClass (name, ps)) =
@@ -324,11 +322,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     and print_case_arm some_thm vars (pattern, body_pretty) =
       let
         val (p, guards, preamble, vars') = pattern_of_iterm vars pattern
-        val header = case print_guard some_thm vars' guards of
-            NONE => Pretty.block [concat [Pretty.str "case",
-              print_python_pattern p], Pretty.str ":"]
-          | SOME guard => Pretty.block [concat [Pretty.str "case", print_python_pattern p],
-              Pretty.str " if (", guard, Pretty.str "):"]
+        val header = print_case_header some_thm vars' (print_python_pattern p) guards
         val body = Pretty.chunks (preamble @ [body_pretty vars'])
       in (header, vars', body) end
   
@@ -489,7 +483,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
     and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
-      let val l = args_num sym in
+      let
+        val l = args_num sym
+        fun call_with head_pretty extra_dicts =
+          let
+            val (immediate, curried) = chop l ts
+            val immediate_pretty =
+              map (print_python_expr const_syntax some_thm vars BR) immediate
+            val curried_pretty =
+              map (fn t => Pretty.enclose "(" ")"
+                [print_python_expr const_syntax some_thm vars NOBR t]) curried
+            val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dicts @ immediate_pretty)
+          in call :: curried_pretty end
+      in
       if length ts < l
       then
         if null ts andalso not (is_class_param sym andalso not (null dictss))
@@ -497,34 +503,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
       else if is_class_param sym andalso not (null dictss)
-      then 
-        let 
+      then
+        let
           val self_dict_pretty = print_dict some_thm vars NOBR (hd (hd dictss))
           val extra_dict_pretty = map_filter (print_dicts some_thm vars BR) (tl dictss)
-          val (immediate, curried) = chop l ts
-          val immediate_pretty =
-            map (print_python_expr const_syntax some_thm vars BR) immediate
-          val curried_pretty =
-            map (fn t => Pretty.enclose "(" ")"
-              [print_python_expr const_syntax some_thm vars NOBR t]) curried
           val head_pretty = Pretty.block [self_dict_pretty, Pretty.str ".",
             Pretty.str (Code_Symbol.default_base sym)]
-          val call = gen_applify true "(" ")" I NOBR head_pretty (extra_dict_pretty @ immediate_pretty)
-        in call :: curried_pretty end
+        in call_with head_pretty extra_dict_pretty end
       else if is_value sym andalso forall null dictss andalso null ts
       then [(Pretty.str o deresolve) sym]
       else
-        let
-          val (immediate, curried) = chop l ts
-          val dict_pretty = map_filter (print_dicts some_thm vars BR) dictss
-          val immediate_pretty =
-            map (print_python_expr const_syntax some_thm vars BR) immediate
-          val curried_pretty =
-            map (fn t => Pretty.enclose "(" ")"
-              [print_python_expr const_syntax some_thm vars NOBR t]) curried
-          val head_pretty = (Pretty.str o deresolve) sym
-          val call = gen_applify true "(" ")" I NOBR head_pretty (dict_pretty @ immediate_pretty)
-        in call :: curried_pretty end
+        let val dict_pretty = map_filter (print_dicts some_thm vars BR) dictss
+        in call_with ((Pretty.str o deresolve) sym) dict_pretty end
       end
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
@@ -670,22 +660,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
      *  - functions that have multiple equations, or where there is a pattern
      *      in the arguments, these have to use match/case
      *)
-    fun print_python_func const { vs, ty, eqs = [] } =
-      (* if we have no code equations *)
-      let
-        val arity = Code_Thingol.unfold_fun ty |> fst |> length
-        (* register the type variable names to avoid name clashes *)
-        val vctxt = intro_vars (map fst vs) reserved
-        (* for each argument, invent a name *)
-        val (params, vctxt) = invent_names vctxt "a" arity
-        (* create necessary typeclass dictionary arguments *)
-        val dict_params = print_dict_args NONE vctxt vs
-        val head = print_func_head const vctxt dict_params (map SOME params)
-        val _ = warning ("function " ^ const ^ " has no code equations")
-      in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
-          Pretty.str (print_python_string const), Pretty.str ")"])]
-      end
+    fun print_python_func const (f as { eqs = [], ... }) =
+          let val _ = warning ("function " ^ const ^ " has no code equations")
+          in print_undefined_func_stub const f end
       | print_python_func const { vs, eqs, ... } =
         let
           (* same as above, register typevar names to avoid name clashes *)
