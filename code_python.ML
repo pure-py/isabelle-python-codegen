@@ -3,6 +3,7 @@ sig
   val target: string
   val add_transparent_wrapper_sym: string -> theory -> theory
   val add_undefined_sym: string -> theory -> theory
+  val enable_native_encoding: string -> theory -> theory
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -43,6 +44,17 @@ structure Undefined_Data = Theory_Data
 );
 
 fun add_undefined_sym name = Undefined_Data.map (Symtab.update (name, ()));
+
+structure Native_Encoding_Data = Theory_Data
+(
+  type T = unit Symtab.table
+  val empty = Symtab.empty
+  val merge = Symtab.merge (K true)
+);
+
+fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name, ()));
+
+fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
 val python_reserved_words =
   ["False", "None", "True", "and", "as", "assert", "await", "break", "class",
@@ -197,7 +209,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           let val vars' = intro_vars [v] vars
           in (PCapture (lookup_var vars' v), [], [], vars') end
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
-          if sym = Constant "List.list.Nil"
+          if sym = Constant "List.list.Nil" andalso use_native_encoding 
+            (Proof_Context.theory_of ctxt) "list"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
           else if safe_is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
@@ -207,38 +220,41 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             in (PCapture name, [GEq (name, t)], [], vars') end
       | pattern_of_iterm vars t =
         (case Code_Thingol.unfold_const_app t of
-          SOME ({ sym = Constant "List.list.Cons", ... }, [_, _]) =>
-            let
-              val (elems, tail) = dest_cons_chain t;
-              val (ps, guards, preamble, vars') = pattern_of_iterms vars elems;
-            in
-              case tail of
-                IConst { sym = Constant "List.list.Nil", ... } =>
-                  (PList (ps, NONE), guards, preamble, vars')
-              | IVar (SOME v) =>
-                  let val vars'' = intro_vars [v] vars'
-                  in (PList (ps, SOME (lookup_var vars'' v)), guards, preamble, vars'') end
-              | IVar NONE => (PList (ps, SOME "_"), guards, preamble, vars')
-              | _ => error "unsupported tail of list Cons-chain pattern"
-            end
-        | _ =>
-          (case Code_Thingol.unfold_const_app t of
-              SOME ({ sym, ... }, args) =>
-                if sym = Constant "Product_Type.Pair"
-                then
-                  let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
-                  in (PTuple ps, guards, preamble, vars') end
-                else if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym andalso length args = 1
-                then pattern_of_iterm vars (hd args)
-                else if can deresolve sym
-                then
-                  let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
-                  in (PClass (deresolve sym, ps), guards, preamble, vars') end
-                else
-                  (* sym has no name in our namespace *)
-                  let val (name, vars') = invent_name vars "c"
-                  in (PCapture name, [GEq (name, t)], [], vars') end
-            | NONE => error "bad term in pattern"))
+            SOME ({ sym, ... }, args) =>
+              if sym = Constant "List.list.Cons" andalso length args = 2
+                andalso use_native_encoding (Proof_Context.theory_of ctxt) "list"
+              then
+                let
+                  val (elems, tail) = dest_cons_chain t;
+                  val (ps, guards, preamble, vars') = pattern_of_iterms vars elems;
+                in
+                  case tail of
+                    IConst { sym = Constant "List.list.Nil", ... } =>
+                      (PList (ps, NONE), guards, preamble, vars')
+                  | IVar (SOME v) =>
+                      let val vars'' = intro_vars [v] vars'
+                      in (PList (ps, SOME (lookup_var vars'' v)), guards, preamble, vars'') end
+                  | IVar NONE => (PList (ps, SOME "_"), guards, preamble, vars')
+                  | _ => error "unsupported tail of list Cons-chain pattern"
+                end
+              else if sym = Constant "Product_Type.Pair" andalso use_native_encoding
+                (Proof_Context.theory_of ctxt) "pair"
+              then
+                let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
+                in (PTuple ps, guards, preamble, vars') end
+              else if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym 
+                andalso length args = 1
+              then pattern_of_iterm vars (hd args)
+              else if can deresolve sym
+              then
+                let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
+                in (PClass (deresolve sym, ps), guards, preamble, vars') end
+              else
+                (* sym has no name in our namespace -- e.g. pruned because
+                   it has custom Python code_printing syntax *)
+                let val (name, vars') = invent_name vars "c"
+                in (PCapture name, [GEq (name, t)], [], vars') end
+          | NONE => error "bad term in pattern")
 
     and pattern_of_iterms vars ts =
       let

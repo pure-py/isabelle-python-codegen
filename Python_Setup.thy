@@ -119,6 +119,57 @@ setup \<open>
   Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.Nat\<close>
 \<close>
 
+
+(* Lists *)
+code_printing
+    type_constructor List.list \<rightharpoonup> (Python) "_ list"
+  | constant List.list.Nil \<rightharpoonup> (Python) "[]"
+  
+code_printing
+    constant "length" \<rightharpoonup> (Python) "len'(_')"
+  | constant List.map \<rightharpoonup> (Python) "list(map((_), (_)))"
+
+setup \<open>
+  let
+    open Code_Thingol Code_Printer;
+
+    fun dest_list_literal (IConst { sym = Code_Symbol.Constant 
+          \<^const_name>\<open>List.list.Nil\<close>, ...}) = SOME []
+      | dest_list_literal (IConst { sym = Code_Symbol.Constant
+          \<^const_name>\<open>List.list.Cons\<close>, ...} `$ x `$ xs) =
+            (case dest_list_literal xs of
+              SOME ys => SOME (x :: ys)
+            | NONE => NONE)
+      | dest_list_literal _ = NONE;
+
+    fun pretty literals print_term thm vars fxy [(x, _), (xs, _)] =
+      case dest_list_literal xs of
+        SOME ys =>
+          Code_Printer.literal_list literals
+            (map (print_term vars NOBR) (x :: ys))
+      | NONE =>
+          Pretty.block [Pretty.str "[", print_term vars NOBR x, Pretty.str "] + ",
+            print_term vars NOBR xs];
+    
+  in
+    (fn target =>
+      Code_Target.set_printings (Code_Symbol.Constant (\<^const_name>\<open>List.list.Cons\<close>,
+        [(target, SOME (complex_const_syntax (2, pretty)))])))
+    "Python"
+  end
+\<close>
+
+setup \<open> Code_Python.enable_native_encoding "list" \<close>
+
+(* Pairs *)
+code_printing
+    type_constructor Product_Type.prod \<rightharpoonup> (Python) "(_ * _)"
+  | constant Product_Type.Pair \<rightharpoonup> (Python) "(_, _)"
+  | constant fst \<rightharpoonup> (Python) "_[0]"
+  | constant snd \<rightharpoonup> (Python) "_[1]"
+
+setup \<open> Code_Python.enable_native_encoding "pair" \<close>
+
 setup \<open>
   Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.int_of_integer\<close>
   #> Code_Python.add_transparent_wrapper_sym \<^const_name>\<open>Code_Numeral.integer_of_int\<close>

@@ -2,11 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 @dataclass(frozen=True)
-class One:
+class Nil:
     pass
 @dataclass(frozen=True)
-class Bit0:
+class Cons:
     a: Any
-@dataclass(frozen=True)
-class Bit1:
-    a: Any
+    b: Any

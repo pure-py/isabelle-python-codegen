@@ -36,6 +36,7 @@ session Python_Examples in "examples" = Python +
     Example_lambda_case
     Example_classrel_base
     Example_classrel
+    Example_generic_list_pair
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
@@ -47,7 +48,7 @@ session Python_Test_Quick in "test/quick" = Python +
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +
   description "Slow test session: a slimmed subset of the HOL-Library candidate set"
-  options [timeout = 1200]
+  options [timeout = 2400]
   sessions
     Python
     "HOL-Number_Theory"

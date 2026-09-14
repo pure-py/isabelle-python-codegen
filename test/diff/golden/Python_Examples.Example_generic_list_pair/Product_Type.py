@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable
-import Num
 
-one_int = (1)
+@dataclass(frozen=True)
+class Pair:
+    a: Any
+    b: Any
