@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  ISABELLE_DOCKER_IMAGE: makarius/isabelle:Isabelle2025-2
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    container:
+      image: makarius/isabelle:Isabelle2025-2
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install python3/pip and pytest
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 python3-pip
+          pip3 install --break-system-packages pytest 2>/dev/null || pip3 install pytest
+
+      - name: extract Python code
+        run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Quick
+
+      - name: Run quick test suite
+        run: pytest test/quick/run_test.py
+
+  diff:
+    runs-on: ubuntu-latest
+    container:
+      image: makarius/isabelle:Isabelle2025-2
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install python3/pip and pytest
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 python3-pip
+          pip3 install --break-system-packages pytest 2>/dev/null || pip3 install pytest
+
+      - name: extract Python code
+        run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Examples
+
+      - name: Run diff test suite
+        run: pytest test/diff/test_golden.py
+
+  slow:
+    runs-on: ubuntu-latest
+    container:
+      image: makarius/isabelle:Isabelle2025-2
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install python3
+        run: apt-get update && apt-get install -y --no-install-recommends python3
+
+      - name: extract Python code
+        run: ISABELLE_PYTHON=1 /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Slow
+
+      - name: syntax check generated code
+        run: python3 -m py_compile test/slow/generated_debug/*.py
