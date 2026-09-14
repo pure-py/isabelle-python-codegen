@@ -168,6 +168,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_classrel name = deresolve (Class_Relation name);
     fun deresolve_inst name = deresolve (Class_Instance name);
+
+    (* extract the theory from the context *)
+    val thy = Proof_Context.theory_of ctxt
     
     (* Python introduced structural pattern matching in version 3.10. 
      * We can therefore use things like capture patterns, wildcards, and
@@ -210,7 +213,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (PCapture (lookup_var vars' v), [], [], vars') end
       | pattern_of_iterm vars (t as IConst { sym, ...}) =
           if sym = Constant "List.list.Nil" andalso use_native_encoding 
-            (Proof_Context.theory_of ctxt) "list"
+            thy "list"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
           else if safe_is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
@@ -222,7 +225,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         (case Code_Thingol.unfold_const_app t of
             SOME ({ sym, ... }, args) =>
               if sym = Constant "List.list.Cons" andalso length args = 2
-                andalso use_native_encoding (Proof_Context.theory_of ctxt) "list"
+                andalso use_native_encoding thy "list"
               then
                 let
                   val (elems, tail) = dest_cons_chain t;
@@ -238,11 +241,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                   | _ => error "unsupported tail of list Cons-chain pattern"
                 end
               else if sym = Constant "Product_Type.Pair" andalso use_native_encoding
-                (Proof_Context.theory_of ctxt) "pair"
+                thy "pair"
               then
                 let val (ps, guards, preamble, vars') = pattern_of_iterms vars args
                 in (PTuple ps, guards, preamble, vars') end
-              else if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym 
+              else if is_transparent_wrapper_sym thy sym 
                 andalso length args = 1
               then pattern_of_iterm vars (hd args)
               else if can deresolve sym
@@ -266,9 +269,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in (rev rev_ps, guards, preamble, vars') end;
 
     fun is_sole_constr (Constant const) =
-          (case Code.get_type_of_constr_or_abstr (Proof_Context.theory_of ctxt) const of
+          (case Code.get_type_of_constr_or_abstr thy const of
             SOME (tyco, false) =>
-              let val ((_, constrs), _) = Code.get_type (Proof_Context.theory_of ctxt) tyco
+              let val ((_, constrs), _) = Code.get_type thy tyco
               in length constrs = 1 end
           | _ => false)
       | is_sole_constr _ = false
@@ -279,7 +282,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | exhaustive t =
           (case Code_Thingol.unfold_const_app t of
             SOME ({ sym, ... }, args) =>
-              if is_transparent_wrapper_sym (Proof_Context.theory_of ctxt) sym 
+              if is_transparent_wrapper_sym thy sym 
                 andalso length args = 1
               then exhaustive (hd args)
               else is_sole_constr sym andalso forall exhaustive args
@@ -555,7 +558,6 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     fun print_python_typedef tyco { cnstrs, ... } =
       let
-        val thy = Proof_Context.theory_of ctxt
         val field_names = 
           case Record.get_info thy (Long_Name.qualifier tyco) of
               SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
@@ -694,9 +696,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val (simple, simple_params) =
             case eqs of
               [ { patterns, ... } ] =>
-                let val stripped = map 
-                  (strip_transparent_wrappers (Proof_Context.theory_of ctxt)) 
-                  patterns 
+                let val stripped = map (strip_transparent_wrappers thy) patterns 
                 in
                   if forall Code_Thingol.is_IVar stripped
                   then (true, map (
