@@ -922,9 +922,10 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
                   in SOME (sym, is_classinst, own_name, pretty) end);
         in (mod_name, imports, entries) end);
 
-    val all_entries = maps (fn (_, _, entries) => entries) module_stmts_raw;
-
-    fun text_of pretty = Pretty.unformatted_string_of pretty;
+    val all_entries = module_stmts_raw
+      |> maps (fn (_, _, entries) => entries)
+      |> map (fn (sym, is_classinst, own_name, pretty) =>
+          (sym, is_classinst, own_name, pretty, Pretty.unformatted_string_of pretty));
 
     (* Whole-identifier substring match: avoids "ord_int" matching inside
       some longer identifier like "ord_int2". *)
@@ -945,8 +946,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       in scan 0 end;
 
     fun classinst_used entries (sym, name) =
-      exists (fn (sym', _, _, pretty') =>
-        not (sym' = sym) andalso is_word_ref name (text_of pretty'))
+      exists (fn (sym', _, _, _, text') =>
+        not (sym' = sym) andalso is_word_ref name text')
         entries;
 
     (* Iteratively drop Classinst statements whose own name is never referenced
@@ -954,16 +955,16 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       can make another (e.g. a superclass instance it alone depended on) dead too. *)
     fun eliminate entries =
       let
-        val (classinsts, others) = List.partition (fn (_, is_ci, _, _) => is_ci) entries;
+        val (classinsts, others) = List.partition (fn (_, is_ci, _, _, _) => is_ci) entries;
         val (dead, alive) = List.partition
-          (fn (sym, _, name, _) => not (classinst_used entries (sym, name)))
+          (fn (sym, _, name, _, _) => not (classinst_used entries (sym, name)))
           classinsts;
       in
         if null dead then entries else eliminate (others @ alive)
       end;
 
     val all_entries_final = eliminate all_entries;
-    val kept_syms = map (fn (sym, _, _, _) => sym) all_entries_final;
+    val kept_syms = map (fn (sym, _, _, _, _) => sym) all_entries_final;
 
     val module_stmts = module_stmts_raw
       |> map (fn (mod_name, imports, entries) =>
