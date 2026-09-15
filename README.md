@@ -1,16 +1,14 @@
 # isabelle-python-codegen
 
-A custom Isabelle/HOL code-generation backend (`Code_Python`) that targets
-Python 3, aiming for idiomatic, native-feeling output rather than a literal
-transliteration of HOL's internal representations — integers print as
-integers, lists as lists, tuples as tuples, records as dataclasses, and so
-on, instead of exposing HOL's constructor machinery directly.
+A custom Isabelle/HOL code-generation backend that targets
+Python 3.
 
 ## Requirements
 
-- A recent Isabelle/HOL release (with `isabelle` on your `PATH`)
+- A recent Isabelle/HOL release (with `isabelle` on your `PATH`, currently only 
+`Isabelle2025-2` has been tested)
 - Python 3.10+ (generated pattern-matching code uses `match`/`case`)
-- `pytest`, if you want to run the generated-code regression tests
+- `pytest`, if you want to run the tests
 
 ## Installing as a component
 
@@ -29,162 +27,81 @@ session My_Project = Python +
     My_Theory
 ```
 
-If `My_Project` extends `Python` this way, it inherits `Python_Setup` and
-can `imports Main Python_Setup` unqualified. If it instead depends on
-`Python` as a sibling session (`sessions "Python"` in its `ROOT`), use the
-session-qualified import, `imports "Python.Python_Setup"`.
+## Using the code generator
 
-## Project layout
+In order to use this generator you have to import one of the following theories:
 
-Each `Example_*.thy` under `examples/` is a focused, runnable demo of one
-feature area (e.g. `Example_nat_pattern.thy` for `0`/`Suc` structural
-matching, `Example_record_ext.thy` for multi-level record extension) — the
-best starting point for idiomatic usage of any one feature in isolation.
-`test/quick/Quick_Test.thy` combines a representative slice of all of them
-into a single theory, which is what the pytest suite is checked against.
+- `Python.Python`
+- `Python.Python_Setup`
 
-Build the examples with:
+`Python.Python` introduces only a minimum set of custom printers (Booleans, Unit,
+Strings), and relies on the automatically extracted HOL definitions for other
+things.
 
-```bash
-isabelle build -d . -e Python_Examples
-```
-
-`-e` exports the generated `.py` files to `/python_out`.
+`Python.Python_Setup` includes additional custom code printers to utilise 
+Python native integers for `int` and `nat`, as well as using Python's own
+list and tuple data types. Most people will probably want to use this setup for
+code generation.
 
 ## Running the tests
 
-The regression suite lives under `test/quick/`, in its own session
-(`Python_Test_Quick`). It checks the *generated Python*, not just that the
-build succeeds — it imports the exported module and asserts on actual
-computed values.
+This repository comes with three test suites:
+
+- **quick**
+
+Unit test that extracts Python code from `/test/quick/Quick_Test.thy` 
+and runs various tests defined in `/test/quick/run_test.py`.
 
 ```bash
 isabelle build -d . -e Python_Test_Quick
-cd test/quick && pytest run_test.py -v
+pytest test/quick/run_test.py -v
 ```
 
-(If the test file or generated module isn't found, the test skips with a
-message naming the missing build step, rather than a bare import error.)
+- **slow**
 
-The suite covers: tuples, int/nat arithmetic (including floor-division and
-monus), nat structural pattern matching, records including multi-level
-extension, and typeclass/superclass method dispatch.
+This draws in a sizeable section of the HOL library. The file
+`test/slow/Candidates.thy` was originally written by Florian Haftmann from TU München, and taken almost verbatim from the Go backend.
 
-## What the generator currently supports
+Two different theories extract the code once with `Python.Python` and once
+with `Python.Python_Setup`. Unfortunately, we can currently not use Isabelle's
+`code_export _ checking ...`, as the code formatter for `checking` has a hardcoded margin of 80 characters, which causes problems with nested statements in Python.
 
-**Numerics**
+```bash
+isabelle build -d . -e Python_Test_Slow
+python3 -m py_compile test/slow/generated_basic/*.py
+python3 -m py_compile test/slow/generated_full/*.py
+```
 
-- `int`: numeral literals, `+`, `-`, `*`, `div`/`mod` (as `//`/`%`, HOL's
-  flooring semantics), and `=`/`≤`/`<` all print as native Python
-  operators — no dictionary/typeclass dispatch in the output.
-- `nat`: same operators as `int`, plus `-` correctly implements monus
-  (`max(0, a - b)`), and structural matching on `0`/`Suc` compiles to a
-  guarded capture with the predecessor bound explicitly (e.g.
-  `case c if (c >= 1): n = (c - 1)`), since Python has no `Suc` to match.
-- `abs`/`min`/`max` print as the native builtins for both `int` and `nat`.
-  `sgn` (`int` only) prints as `((x > 0) - (x < 0))`. These are
-  typeclass-polymorphic constants, so using them pulls in an unused
-  per-type dictionary object as a side effect of internal representation —
-  a dead-code elimination pass strips it back out before writing.
+- **diff**
 
-**Strings**
+During the development of this code generator, different Isabelle features were
+tested in isolation in different example theories under `examples/`. To see if
+changes to the backend result in changes to the extracted code, the `diff` test
+suite holds golden reference files under `test/diff/golden/`.
 
-- `String.literal` maps to native `str`; `+`, equality, `≤`, `<` print as
-  native operators.
+```bash
+isabelle build -d . -e Python_Examples
+pytest test/diff/run_test.py
+```
 
-**Lists**
+If a new example is added, or the output has changed and is confirmed correct,
+the golden files can be recreated by
 
-- `List.Cons`/`List.Nil` map to native Python lists; literal-shaped
-  construction prints as a list literal, a symbolic tail falls back to
-  `[x] + xs`.
-- Pattern matching against `[]`/`x # xs` prints as native Python
-  destructuring (`case []:` / `case [x, *xs]:`). A chain of `Cons`
-  applications flattens into one pattern with a single star-capture, since
-  Python's `match` allows only one `*name` per list pattern.
-- `map` has a native printer (`list(map(_, _))`). This isn't just style:
-  standard-library list functions whose equations pattern-match on
-  `Nil`/`Cons` internally can silently fail to compile for this target —
-  it builds fine for other Isabelle targets but for Python calls into a
-  module that's never generated. Watch for this with other list functions
-  (`filter`, `List.rev`, etc.); the fix is the same native-printer
-  treatment given to `map`.
-
-**Tuples**
-
-- `Product_Type.prod`/`Pair`/`fst`/`snd` map to native tuples and
-  indexing; tuple patterns print as bare destructuring (`case (a, b):`).
-
-**Records**
-
-- HOL records compile to frozen dataclasses with real field names.
-  Selectors and functional update compile to pattern-match-and-reconstruct.
-  Record extension composes across nesting levels, each level its own
-  dataclass linked through the "more" slot. `unit` maps to `None`.
-
-**Typeclasses**
-
-- Single-level and chained (multi-level, multiple superclasses) instances.
-  Dictionaries print as keyword-constructed objects; superclass projection
-  chains correctly across levels.
-
-**Pattern matching / control flow**
-
-- `fun`-style multi-clause equations compile to `match`/`case`, including
-  nested constructor patterns (tuples, `Suc`-chains, user datatypes).
-- `case ... of ...` compiles correctly both as a whole definition body and
-  nested inside a larger expression — since Python's `match` is a
-  statement, nested cases are hoisted via an A-normal-form rewrite into a
-  preceding `match` block assigning into a fresh temporary.
-- `if`/`then`/`else` prints as native Python `if`/`else` rather than
-  falling through to the generic `True`/`False` case-matching it desugars
-  to internally, preserving non-strict semantics even when a branch itself
-  contains nested pattern matching.
-- Pretty-printing sites that could otherwise silently line-wrap a bare
-  `return`/assignment are guarded with explicit parentheses.
-
-**Partial application**
-
-- Under-arity application — genuine partial application (`add2 1`), a bare
-  function reference used as a value, or a point-free alias (`f = g`) —
-  prints correctly. Under-saturated calls are eta-expanded via Isabelle's
-  own `Code_Thingol.saturated_application`, coming out as a Python
-  `lambda`; a bare reference prints as the plain function name instead of
-  a no-op lambda. Point-free aliases get their arity from the declared
-  type rather than the (misleadingly empty) equation parameter list.
-
-**Option**
-
-- `Some`/`None` compile via the generic constructor path: `option` prints
-  as a two-constructor datatype, and `match`/`case` arms are structurally
-  correct regardless of clause order. The empty constructor's generated
-  class is named `Nonea`, not `None` (a reserved word) — cosmetic only.
-
-
-**Code_Numeral (`integer`/`natural`)**
- 
-- HOL's own "target language numeral" types print as native Python ints,
-  the same as `int`/`nat`: literals, `+`, `-`, `*`, `div`/`mod`, and
-  comparisons all print as native operators. `natural`'s conversion from
-  `integer` (`natural_of_integer`) prints as `max(0, _)`, matching its
-  real clamp-negative-to-zero semantics rather than a bare pass-through.
-  `integer`'s `sgn` and the cross-type conversions
-  (`nat_of_integer`/`integer_of_nat`/etc.) aren't registered yet.
-
-**Module output**
-
-- Statements print in dependency-respecting order; nullary constants print
-  as plain assignments rather than zero-argument calls; import/blank-line
-  formatting follows normal Python conventions.
+```bash
+isabelle build -d . -e Python_Examples
+python3 test/diff/reseed_goldens.py
+```
 
 ## Known limitations
 
 - No support yet for `real`, `rat`, or other numeric types beyond
   `int`/`nat`.
-- A numeral payload passed through a generic constructor path (e.g.
-  `Some 5`, or an `integer`/`natural` literal) triggers an unused `import
-  Num` in the generated module -- HOL's term-level dependency graph
-  records a reference to `Num.numeral`'s binary encoding even though the
-  literal itself prints natively. Harmless (the import just goes unused),
-  and deliberately not fixed: doing so would mean matching against the
-  generated source text to detect it, which is more brittle than the
-  payoff is worth.
+- Introducing a pretty printer that unboxes a type with exactly one constructor
+which maps to an identity in Python causes an `undefined name error`. To
+circumvent this, such a symbol must be declared with
+`Code_Python.add_transparent_wrapper_sym`. For an example, look at
+`examples/Example_transparent_wrapper.thy`.
+
+## License
+
+BSD
