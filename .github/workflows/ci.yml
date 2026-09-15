@@ -63,4 +63,7 @@ jobs:
         run: ISABELLE_PYTHON=1 /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Slow
 
       - name: syntax check generated code
-        run: python3 -m py_compile test/slow/generated_debug/*.py
+        run: |
+          python3 -m py_compile test/slow/generated_basic/*.py
+          python3 -m py_compile test/slow/generated_full/*.py
+          

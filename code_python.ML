@@ -60,7 +60,10 @@ val python_reserved_words =
   ["False", "None", "True", "and", "as", "assert", "await", "break", "class",
    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
    "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
-   "raise", "return", "try", "while", "with", "yield", "match", "case"];
+   "raise", "return", "try", "while", "with", "yield", "match", "case"]
+
+  (* these are symbols we use in addition to the standard reserved words *) 
+  @ ["dataclass", "Any", "Callable", "_unimplemented"];;
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -519,8 +522,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
       if List.exists (fn name => sym = Constant name) undefineds
-      then Pretty.str ("raise NotImplementedError(" ^
-        print_python_string (Code_Symbol.default_base sym) ^ ")")
+      then Pretty.block [Pretty.str "_unimplemented(",
+          Pretty.str (print_python_string (Code_Symbol.default_base sym)), Pretty.str ")"]
       else
         let
           fun stock fxy' ts' =
@@ -911,10 +914,13 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val import_ps = imports
           |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
-        val header_ps = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
+        val imports_block = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
           :: Pretty.str "from typing import Any, Callable"
           :: import_ps)
-      in ([mod_name ^ ".py"], Pretty.chunks2 (header_ps :: stmt_ps))
+        val unimplemented_def = Pretty.chunks
+          [Pretty.str "def _unimplemented(name):",
+           indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
+      in ([mod_name ^ ".py"], Pretty.chunks2 (imports_block :: unimplemented_def :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

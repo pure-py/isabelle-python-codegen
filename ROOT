@@ -57,5 +57,5 @@ session Python_Test_Slow in "test/slow" = "HOL-Library" +
     "HOL-Computational_Algebra"
   theories [document = false, condition = ISABELLE_PYTHON]
     Candidates
-    Generate
-  export_files (in "python_out") "*:**"
+    Extract_Basic
+    Extract_Full
