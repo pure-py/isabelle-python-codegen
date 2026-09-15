@@ -46,8 +46,4 @@ setup \<open>
   Literal.add_code "Python"
 \<close>
 
-code_printing
-    constant "min" \<rightharpoonup> (Python) "min(_, _)"
-  | constant "max" \<rightharpoonup> (Python) "max(_, _)"
-
 end

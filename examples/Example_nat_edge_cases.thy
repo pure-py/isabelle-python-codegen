@@ -30,11 +30,4 @@ export_code nat_minus2 peel_positive_head classify_small
   nat_minus2_test peel_test classify_test
   in Python file_prefix "."
 
-(* These will not work: Code_Abstract_Nat (pulled in transitively via
-   Code_Target_Nat) cannot rewrite a Suc pattern nested inside another
-   constructor such as a pair. See Code_Abstract_Nat for details. *)
-(*
-export_code pair_pred_sum pair_pred_test in Python file_prefix "."
-*)
-
 end
