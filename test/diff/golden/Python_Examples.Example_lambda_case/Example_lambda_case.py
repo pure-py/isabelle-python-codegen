@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Option
 
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
 def doubled(xs):
     return (list(map(lambda n: (n + n), xs)))
 

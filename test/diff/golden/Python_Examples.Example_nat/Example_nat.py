@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Num
 
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
 nat_sum = ((6 + 7))
 
 nat_eq_test = ((4 == 4))

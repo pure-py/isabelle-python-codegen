@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
 @dataclass(frozen=True)
 class super_op:
     sup_apply: Callable

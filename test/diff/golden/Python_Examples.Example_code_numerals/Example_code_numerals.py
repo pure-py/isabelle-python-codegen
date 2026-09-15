@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Num
 
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
 def cn_add(x, y):
     return ((x + y))
 

@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Example_classrel_base
 
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
 def sup_apply_bool(b):
     return (b)
 

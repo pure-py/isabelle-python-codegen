@@ -37,6 +37,7 @@ session Python_Examples in "examples" = Python +
     Example_classrel_base
     Example_classrel
     Example_generic_list_pair
+    Example_integer_bit_ops
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +

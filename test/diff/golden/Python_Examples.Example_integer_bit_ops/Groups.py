@@ -1,14 +1,13 @@
 from dataclasses import dataclass
 from typing import Any, Callable
-import Num
 
 def _unimplemented(name):
     raise NotImplementedError(name)
 
-empty_list = ([])
+@dataclass(frozen=True)
+class one:
+    onea: Callable
 
-magic_number = (42)
-
-uses_empty_list = (empty_list)
-
-uses_magic_number = ((magic_number + 1))
+@dataclass(frozen=True)
+class times:
+    timesa: Callable
