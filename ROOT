@@ -1,5 +1,3 @@
-chapter AFP
-
 session Python = HOL +
   description "A Python frontend for the Isabelle code generator."
   options [timeout = 300, document = false]
