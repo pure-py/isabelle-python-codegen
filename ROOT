@@ -54,7 +54,7 @@ session Python_Test_Slow in "test/slow" = "HOL-Library" +
     "HOL-Data_Structures"
     "HOL-Examples"
     "HOL-Computational_Algebra"
-  theories [document = false, condition = ISABELLE_PYTHON]
+  theories [document = false]
     Candidates
     Extract_Basic
     Extract_Full
