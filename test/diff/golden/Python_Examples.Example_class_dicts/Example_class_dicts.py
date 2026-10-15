@@ -1,0 +1,51 @@
+from dataclasses import dataclass
+from typing import Any, Callable
+import Product_Type
+import Int
+import Num
+import HOL
+import Orderings
+
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
+def weight(a_dict, x, xa1):
+    match (x, xa1):
+        case (xa, []):
+            return (0)
+        case (xa, [y, *ys]):
+            if (a_dict[1].order_linorder.preorder_order.ord_preorder.less(y, xa)):
+                z = (2)
+            else:
+                if (HOL.eq(a_dict[0], y, xa)):
+                    z = (1)
+                else:
+                    z = (0)
+            return ((z + weight((a_dict[0], a_dict[1]), xa, ys)))
+        case _:
+            raise RuntimeError("match failed")
+
+def weight_int(a, b):
+    return (weight((Int.equal_int(), Int.linorder_int()), a, b))
+
+def occurrences(a_dict, x, xa1):
+    match (x, xa1):
+        case (xa, []):
+            return (0)
+        case (xa, [y, *ys]):
+            if (HOL.eq(a_dict, xa, y)):
+                z = (1)
+            else:
+                z = (0)
+            return ((z + occurrences(a_dict, xa, ys)))
+        case _:
+            raise RuntimeError("match failed")
+
+def occurrences_int(a, b):
+    return (occurrences(Int.equal_int(), a, b))
+
+def occurrences_pair(a, b):
+    return (occurrences(Product_Type.equal_prod(Int.equal_int(), Int.equal_int()), a, b))
+
+def occurrences_int_eta(x, ys):
+    return (occurrences(Int.equal_int(), x, ys))

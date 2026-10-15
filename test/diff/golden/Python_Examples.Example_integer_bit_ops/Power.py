@@ -12,6 +12,6 @@ class power:
 
 def powera(a_dict, aa, n):
     if ((n == 0)):
-        return (a_dict.one_power.one())
+        return (a_dict.one_power.onea())
     else:
-        return (a_dict.times_power.times(aa, powera(a_dict, aa, (max(0, n - 1)))))
+        return (a_dict.times_power.timesa(aa, powera(a_dict, aa, (max(0, n - 1)))))

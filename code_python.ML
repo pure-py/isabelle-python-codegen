@@ -169,8 +169,12 @@ fun print_python_stmt undefineds const_syntax reserved args_num
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
-    fun deresolve_classrel name = deresolve (Class_Relation name);
     fun deresolve_inst name = deresolve (Class_Instance name);
+
+    (* Attribute name of a class dataclass field (method or superclass).
+       Declaration, construction and projection must all use this, as
+       deresolve may rename (`equal` -> `equala`) or module-qualify. *)
+    fun attr_name sym = Long_Name.base_name (deresolve sym);
 
     (* extract the theory from the context *)
     val thy = Proof_Context.theory_of ctxt
@@ -470,7 +474,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_dict some_thm vars _ (Dict (classrels, plain_dict)) =
       fold (fn classrel => fn p =>
-        Pretty.block [p, Pretty.str".", (Pretty.str o deresolve) (Class_Relation classrel)])
+        Pretty.block [p, Pretty.str".", Pretty.str (attr_name (Class_Relation classrel))])
       (rev classrels) (* need to go from source dict inwards *)
       (print_plain_dict some_thm vars plain_dict)
     
@@ -501,7 +505,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in
       if length ts < l
       then
-        if null ts andalso not (is_class_param sym andalso not (null dictss))
+        if null ts andalso forall null dictss
         then [(Pretty.str o deresolve) sym]
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
@@ -511,7 +515,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           val self_dict_pretty = print_dict some_thm vars NOBR (hd (hd dictss))
           val extra_dict_pretty = map_filter (print_dicts some_thm vars BR) (tl dictss)
           val head_pretty = Pretty.block [self_dict_pretty, Pretty.str ".",
-            Pretty.str (Code_Symbol.default_base sym)]
+            Pretty.str (attr_name sym)]
         in call_with head_pretty extra_dict_pretty end
       else if is_value sym andalso forall null dictss andalso null ts
       then [(Pretty.str o deresolve) sym]
@@ -584,10 +588,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     fun print_python_class sym { super, methods } =
       let
         val fields = methods
-          |> map (fn (name, _) => Pretty.str (Long_Name.base_name (deresolve_const name) ^ ": Callable"))
+          |> map (fn (name, _) => Pretty.str (attr_name (Constant name) ^ ": Callable"))
         val super_fields = super
           |> map (fn (self, super) => Pretty.str
-            (Long_Name.base_name (deresolve_classrel (self, super)) ^ ": Any"))
+            (attr_name (Class_Relation (self, super)) ^ ": Any"))
         val all_fields = super_fields @ fields
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
@@ -611,13 +615,13 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             val args = map (IVar o SOME) aux_names
             val call = print_app const_syntax (SOME thm) vars NOBR (const, args)
             val params = Pretty.enum "," "" "" (map (Pretty.str o lookup_var vars) aux_names)
-          in  concat [Pretty.str (Long_Name.base_name (deresolve_const classparam)), Pretty.str "=",
+          in  concat [Pretty.str (attr_name (Constant classparam)), Pretty.str "=",
                 Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
           end
 
         fun print_superinst_field (super_class, dictss) =
           let
-            val field_name = Long_Name.base_name (deresolve_classrel (class, super_class))
+            val field_name = attr_name (Class_Relation (class, super_class))
             val value = print_plain_dict NONE tyvars
               (Dict_Const ((tyco, super_class), dictss))
           in concat [Pretty.str field_name, Pretty.str "=", value] end
@@ -653,6 +657,20 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           Pretty.str (print_python_string const), Pretty.str ")"])]
       end
 
+    (* A pattern-less equation whose rhs is a constant taking instance
+       dictionaries (`f_int = f`) can't be an alias: the dictionaries must be
+       applied. Callers use the arity of the type (see args_num), so eta-expand
+       to an ordinary function: `def f_int(a, aa): return f(dicts, a, aa)` *)
+    fun eta_expand_dict_alias n
+        (eq as { patterns = [], rhs = IConst (const as { dictss, ... }), thm }) =
+          if n = 0 orelse forall null dictss then eq
+          else
+            let
+              val (vs_tys, body) = Code_Thingol.unfold_abs
+                (Code_Thingol.saturated_application n (const, []))
+            in { patterns = map (IVar o fst) vs_tys, rhs = body, thm = thm } end
+      | eta_expand_dict_alias _ eq = eq;
+
     (* This functions needs to distinguish different cases:
      *  - functions without any code equations => print `pass`
      *  - value definitions (i.e., nullary functions), should not be printed as
@@ -666,9 +684,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     fun print_python_func const (f as { eqs = [], ... }) =
           let val _ = warning ("function " ^ const ^ " has no code equations")
           in print_undefined_func_stub const f end
-      | print_python_func const { vs, eqs, ... } =
+      | print_python_func const { vs, ty, eqs = eqs0 } =
         let
           (* same as above, register typevar names to avoid name clashes *)
+          val eqs = map (eta_expand_dict_alias
+           (length (fst (Code_Thingol.unfold_fun ty)))) eqs0
           val vctxt = intro_vars (map fst vs) reserved
           (* a `simple` function only has one equations, where all arguments
              are bare variables (so no destructuring needed), so it can be
