@@ -30,3 +30,6 @@ generated_full/
 *.ML~
 *.sml~
 *.scala~
+
+# MacOS files
+.DS_Store
