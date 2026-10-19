@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 
 def _unimplemented(name):
     raise NotImplementedError(name)
@@ -29,6 +30,7 @@ def describe_color(x0):
 class describable:
     describe: Callable
 
+@functools.cache
 def describable_color():
     return describable(describe = lambda a: describe_color(a))
 
@@ -48,6 +50,7 @@ def describe_shape(x0):
         case _:
             raise RuntimeError("match failed")
 
+@functools.cache
 def describable_shape():
     return describable(describe = lambda a: describe_shape(a))
 

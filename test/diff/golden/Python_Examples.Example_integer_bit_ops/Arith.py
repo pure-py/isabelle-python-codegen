@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 import Power
 import Groups
@@ -7,12 +8,15 @@ import Groups
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+@functools.cache
 def one_integer():
     return Groups.one(onea = lambda : 1)
 
+@functools.cache
 def times_integer():
     return Groups.times(timesa = lambda a, b: (a * b))
 
+@functools.cache
 def power_integer():
     return Power.power(one_power = one_integer(), times_power = times_integer())
 
