@@ -21,7 +21,7 @@ build-examples:
 	$(ISABELLE) build -d . -e Python_Examples
 
 test-diff: build-examples
-	$(PYTEST) test/diff/test_golden.py
+	$(PYTEST) test/diff/run_test.py
 
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py

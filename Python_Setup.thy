@@ -128,6 +128,7 @@ code_printing
 code_printing
     constant "length" \<rightharpoonup> (Python) "len'(_')"
   | constant List.map \<rightharpoonup> (Python) "list(map((_), (_)))"
+  | constant List.append \<rightharpoonup> (Python) "(_ + _)"
 
 setup \<open>
   let
