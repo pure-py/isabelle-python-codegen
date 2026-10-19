@@ -223,3 +223,30 @@ def test_dict_parameterized_instance():
 def test_option_values():
     assert m.o_describe_some == 6
     assert m.o_describe_none == 0
+
+# ---- hoisted multi-argument lambdas ----
+
+def test_hoisted_lambda_is_curried():
+    # apply2 calls its function argument as f(a)(b); the hoisted def must accept that.
+    assert m.l_curried_none == 3
+    assert m.l_curried_some == 7
+
+
+# ---- native List.nth and IArray ----
+
+def test_list_nth_is_native_indexing():
+    assert m.ia_nth([5, 6, 7], 2) == 7
+    assert not hasattr(m, "nth")
+
+
+def test_iarray_is_tuple():
+    assert m.ia_grid == ((0, 1, 2), (10, 11, 12))
+    assert m.ia_get(1, 2) == 12
+    assert m.ia_rows == [[0, 1, 2], [10, 11, 12]]
+
+
+def test_iarray_pattern_and_exists():
+    # IArray [] / IArray (x # _) patterns become sequence patterns on the tuple
+    assert m.ia_head(()) == -1
+    assert m.ia_head((4, 5)) == 4
+    assert m.ia_any_neg((1, -2)) and not m.ia_any_neg(())

@@ -1,0 +1,29 @@
+from dataclasses import dataclass
+from typing import Any, Callable
+import IArray
+import Num
+import Nat
+
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
+def sum_ends(a):
+    return (((a[0]) + (a[(max(0, (len(a)) - 1))])))
+
+squares = (tuple(map(lambda i: (i * i), range(4))))
+
+example = (((list(squares)), ((sum_ends(squares), (((all(map(lambda x: (x < 10), squares))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, 2]))))), (tuple([2, 3])))))))))
+
+def sub_pair(p):
+    return ((lambda a, i: a[i])(*p))
+
+example_nth = ([10, 20, 30][1])
+
+def first_or_zero(x0):
+    match x0:
+        case []:
+            return (0)
+        case [x, *uu]:
+            return (x)
+        case _:
+            raise RuntimeError("match failed")

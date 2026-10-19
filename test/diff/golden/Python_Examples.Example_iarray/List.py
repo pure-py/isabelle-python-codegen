@@ -1,0 +1,19 @@
+from dataclasses import dataclass
+from typing import Any, Callable
+import HOL
+
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
+def equal_list(a_dict, x0, x1):
+    match (x0, x1):
+        case ([], [x21, *x22]):
+            return (False)
+        case ([x21, *x22], []):
+            return (False)
+        case ([x21, *x22], [y21, *y22]):
+            return (HOL.eq(a_dict, x21, y21) and equal_list(a_dict, x22, y22))
+        case ([], []):
+            return (True)
+        case _:
+            raise RuntimeError("match failed")

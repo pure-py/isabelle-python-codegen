@@ -1,5 +1,5 @@
 theory Quick_Test
-  imports Main "Python.Python_Setup"
+  imports Main "Python.Python_Setup" "Python.Python_IArray"
 begin
 
 section \<open>Tuples\<close>
@@ -207,6 +207,33 @@ fun describe_opt :: "int option \<Rightarrow> int" where
 definition o_describe_some :: int where "o_describe_some = describe_opt o_some"
 definition o_describe_none :: int where "o_describe_none = describe_opt o_none"
 
+text \<open>A multi-argument lambda whose body needs statements is hoisted to a def; it must
+  stay curried, since function values are applied one argument at a time.\<close>
+fun apply2 :: "('a \<Rightarrow> 'b \<Rightarrow> 'c) \<Rightarrow> 'a \<Rightarrow> 'b \<Rightarrow> 'c" where
+  "apply2 f a b = f a b"
+
+definition l_curried_case :: "int option \<Rightarrow> int \<Rightarrow> int" where
+  "l_curried_case a b = apply2 (\<lambda>x y. case x of None \<Rightarrow> y | Some n \<Rightarrow> n + y) a b"
+
+definition l_curried_none :: int where "l_curried_none = l_curried_case None 3"
+definition l_curried_some :: int where "l_curried_some = l_curried_case (Some 4) 3"
+
+text \<open>List.nth and IArray are native: indexing is O(1), an iarray is a tuple.\<close>
+definition ia_nth :: "int list \<Rightarrow> nat \<Rightarrow> int" where "ia_nth xs n = xs ! n"
+
+definition ia_grid :: "int iarray iarray" where
+  "ia_grid = IArray.of_fun (\<lambda>i. IArray.of_fun (\<lambda>j. int (i * 10 + j)) 3) 2"
+
+definition ia_get :: "nat \<Rightarrow> nat \<Rightarrow> int" where "ia_get i j = ia_grid !! i !! j"
+
+definition ia_rows :: "int list list" where "ia_rows = map IArray.list_of (IArray.list_of ia_grid)"
+
+fun ia_head :: "int iarray \<Rightarrow> int" where
+  "ia_head (IArray []) = -1"
+| "ia_head (IArray (x # _)) = x"
+
+definition ia_any_neg :: "int iarray \<Rightarrow> bool" where "ia_any_neg a = IArray.exists (\<lambda>x. x < 0) a"
+
 export_code
   t_point t_swap t_add_points t_points_sum
   i_quotient_neg i_remainder_neg i_checksum
@@ -225,6 +252,8 @@ export_code
   cls_default_b cls_double_a
   cls_list_default cls_list_default_empty
   o_some o_none describe_opt o_describe_some o_describe_none
+  l_curried_none l_curried_some
+  ia_nth ia_grid ia_get ia_rows ia_head ia_any_neg
   in Python file_prefix "."
 
 end

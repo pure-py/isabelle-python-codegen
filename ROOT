@@ -6,6 +6,7 @@ session Python = HOL +
   theories
     Python
     Python_Setup
+    Python_IArray
 
 session Python_Examples in "examples" = Python +
   options [timeout = 300]
@@ -37,6 +38,7 @@ session Python_Examples in "examples" = Python +
     Example_generic_list_pair
     Example_integer_bit_ops
     Example_class_dicts
+    Example_iarray
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +

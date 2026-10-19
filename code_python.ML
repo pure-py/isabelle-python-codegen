@@ -247,6 +247,16 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                   | IVar NONE => (PList (ps, SOME "_"), guards, preamble, vars')
                   | _ => error "unsupported tail of list Cons-chain pattern"
                 end
+              else if sym = Constant "IArray.iarray.IArray" andalso length args = 1
+                andalso use_native_encoding thy "iarray"
+              then
+                (* an iarray is a tuple: [*xs] matches it and binds xs to a list *)
+                (case hd args of
+                  IVar (SOME v) =>
+                    let val vars' = intro_vars [v] vars
+                    in (PList ([], SOME (lookup_var vars' v)), [], [], vars') end
+                | IVar NONE => (PWild, [], [], vars)
+                | xs => pattern_of_iterm vars xs)
               else if sym = Constant "Product_Type.Pair" andalso use_native_encoding
                 thy "pair"
               then
@@ -352,19 +362,35 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                     in (param :: ps, vs'', body') end
                 | strip_lambdas vs body = ([], vs, body)
               val (params, vars1, body) = strip_lambdas vars t
-              val (fname, vars2) = invent_name vars1 "lam"
-              val (param_prettys, vars3) = fold_map
+              val (param_prettys, vars2) = fold_map
                 (fn NONE => (fn vs => let val (n, vs') = invent_name vs "unused"
                       in (Pretty.str n, vs') end)
                   | SOME v => (fn vs => (Pretty.str (lookup_var vs v), vs)))
-                params vars2
-              val head = Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vars3 fname),
-                Pretty.enum "," "(" ")" param_prettys, Pretty.str ":"]
-              val body_pretty = print_tail_expr NONE
-                (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
-                  print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
-                vars3 body
-              val def_stmt = Pretty.chunks [head, indent_block 4 body_pretty]
+                params vars1
+              (* Function values are applied one argument at a time (f(x)(y)), so a
+                 multi-parameter lambda becomes nested one-parameter defs. *)
+              fun def_head vs fname param =
+                Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
+                  Pretty.str "(", param, Pretty.str "):"]
+              fun curried_defs vs [param] =
+                    let
+                      val (fname, vs') = invent_name vs "lam"
+                      val body_pretty = print_tail_expr NONE
+                        (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
+                          print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
+                        vs' body
+                    in (Pretty.chunks [def_head vs' fname param, indent_block 4 body_pretty],
+                      fname, vs') end
+                | curried_defs vs (param :: params') =
+                    let
+                      val (fname, vs1) = invent_name vs "lam"
+                      val (inner, inner_name, vs2) = curried_defs vs1 params'
+                      val inner_block = Pretty.chunks [inner,
+                        Pretty.str ("return " ^ lookup_var vs2 inner_name)]
+                    in (Pretty.chunks [def_head vs2 fname param, indent_block 4 inner_block],
+                      fname, vs2) end
+                | curried_defs _ [] = error "internal error: hoisted lambda without parameters"
+              val (def_stmt, fname, vars3) = curried_defs vars2 param_prettys
               in ([PRaw def_stmt], vars3, IVar (SOME fname)) end
       | anf_term vars (t as ICase _) =
           let val (x, vars') = invent_name vars "x"

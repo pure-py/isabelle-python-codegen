@@ -120,6 +120,9 @@ setup \<open>
 \<close>
 
 
+(* Python builtins used by the printings in this theory; generated names must not shadow them *)
+code_reserved (Python) len list map max min abs divmod
+
 (* Lists *)
 code_printing
     type_constructor List.list \<rightharpoonup> (Python) "_ list"
@@ -127,6 +130,7 @@ code_printing
   
 code_printing
     constant "length" \<rightharpoonup> (Python) "len'(_')"
+  | constant List.nth \<rightharpoonup> (Python) "_[_]"
   | constant List.map \<rightharpoonup> (Python) "list(map((_), (_)))"
   | constant List.append \<rightharpoonup> (Python) "(_ + _)"
 

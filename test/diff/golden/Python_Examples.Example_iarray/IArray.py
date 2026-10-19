@@ -1,0 +1,10 @@
+from dataclasses import dataclass
+from typing import Any, Callable
+import List
+import HOL
+
+def _unimplemented(name):
+    raise NotImplementedError(name)
+
+def equal_iarray(a_dict, asa, bs):
+    return (List.equal_list(a_dict, (list(asa)), (list(bs))))
