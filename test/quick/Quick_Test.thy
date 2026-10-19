@@ -234,6 +234,33 @@ fun ia_head :: "int iarray \<Rightarrow> int" where
 
 definition ia_any_neg :: "int iarray \<Rightarrow> bool" where "ia_any_neg a = IArray.exists (\<lambda>x. x < 0) a"
 
+text \<open>Division by zero follows Isabelle, not Python: @{text "a div 0 = 0"}, @{text "a mod 0 = a"}.\<close>
+definition z_int_div :: int where "z_int_div = (-7) div 0"
+definition z_int_mod :: int where "z_int_mod = (-7) mod 0"
+definition z_nat_div :: nat where "z_nat_div = 7 div 0"
+definition z_nat_mod :: nat where "z_nat_mod = 7 mod 0"
+definition z_int_floor :: "int \<times> int" where "z_int_floor = ((-7) div 2, (-7) mod 2)"
+
+text \<open>A hoisted lambda's parameters must not shadow outer variables after the hoisted def.\<close>
+definition l_shadow :: "int option \<Rightarrow> int \<Rightarrow> int" where
+  "l_shadow x z = (case apply2 (\<lambda>x y. case x of None \<Rightarrow> y | Some n \<Rightarrow> n + y) (Some 1) z of
+     r \<Rightarrow> r + (case x of None \<Rightarrow> 100 | Some n \<Rightarrow> n))"
+definition l_shadow_none :: int where "l_shadow_none = l_shadow None 3"
+definition l_shadow_some :: int where "l_shadow_some = l_shadow (Some 10) 3"
+
+text \<open>Constructors take no dictionaries, even the abstract constructor of an abstype with a sort
+  constraint (as @{text vec_lambda} of @{text "('a, 'b::finite) vec"}).\<close>
+typedef ('a::finite) fbox = "UNIV :: ('a \<Rightarrow> int) set" morphisms fget FBox by auto
+lemma [code abstype]: "FBox (fget x) = x" by (rule fget_inverse)
+definition fconst :: "int \<Rightarrow> ('a::finite) fbox" where "fconst c = FBox (\<lambda>_. c)"
+lemma [code abstract]: "fget (fconst c) = (\<lambda>_. c)" by (simp add: fconst_def FBox_inverse)
+definition c_boxed :: int where "c_boxed = fget (fconst 5 :: bool fbox) True"
+
+text \<open>A pattern-less equation of a dictionary-taking function is eta-expanded to its arity.\<close>
+definition twice_twice :: "'a::plus \<Rightarrow> 'a" where
+  "twice_twice = (\<lambda>x. x + x) \<circ> (\<lambda>x. x + x)"
+definition e_twice_twice :: int where "e_twice_twice = twice_twice 3"
+
 export_code
   t_point t_swap t_add_points t_points_sum
   i_quotient_neg i_remainder_neg i_checksum
@@ -254,6 +281,8 @@ export_code
   o_some o_none describe_opt o_describe_some o_describe_none
   l_curried_none l_curried_some
   ia_nth ia_grid ia_get ia_rows ia_head ia_any_neg
+  z_int_div z_int_mod z_nat_div z_nat_mod z_int_floor
+  l_shadow_none l_shadow_some c_boxed e_twice_twice
   in Python file_prefix "."
 
 end

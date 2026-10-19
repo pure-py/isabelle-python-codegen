@@ -258,3 +258,28 @@ def test_dict_free_instance_is_built_once():
     # instances without dictionary arguments are wrapped in functools.cache,
     # so every use shares one (frozen) dictionary instead of rebuilding it
     assert m.has_default_tag() is m.has_default_tag()
+
+
+# ---- division by zero (Isabelle semantics) ----
+
+def test_div_mod_by_zero():
+    assert m.z_int_div == 0
+    assert m.z_int_mod == -7
+    assert m.z_nat_div == 0
+    assert m.z_nat_mod == 7
+    assert m.z_int_floor == (-4, 1)     # floor division, as in Python
+
+
+# ---- hoisting, constructors and dictionary-taking definitions ----
+
+def test_hoisted_lambda_does_not_shadow_outer_vars():
+    assert m.l_shadow_none == 104       # (1 + 3) + 100
+    assert m.l_shadow_some == 14        # (1 + 3) + 10
+
+
+def test_constructor_of_sorted_datatype():
+    assert m.c_boxed == 5
+
+
+def test_pattern_less_dict_function():
+    assert m.e_twice_twice == 12

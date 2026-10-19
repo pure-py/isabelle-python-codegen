@@ -7,6 +7,8 @@ code_identifier
 | code_module Code_Target_Int \<rightharpoonup> (Python) Arith
 
 (* Integers *)
+(* Isabelle defines a div 0 = 0 and a mod 0 = a, while Python raises ZeroDivisionError;
+   the guarded lambdas evaluate each operand once (here and for nat, integer, natural). *)
 code_printing
     type_constructor Int.int \<rightharpoonup> (Python) "int"
   | constant "0 :: int" \<rightharpoonup> (Python) "0"
@@ -18,8 +20,8 @@ code_printing
   | constant "(\<le>) :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _ )"
   | constant "(<) :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
   | constant "(*) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ * _)"
-  | constant "(div) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ '/'/ _)"
-  | constant "(mod) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "(div) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(lambda a, b: a '/'/ b if b else 0)'(_, _')"
+  | constant "(mod) :: int \<Rightarrow> int \<Rightarrow> int" \<rightharpoonup> (Python) "(lambda a, b: a % b if b else a)'(_, _')"
 
 code_printing
     constant "abs :: int \<Rightarrow> int" \<rightharpoonup> (Python) "abs'(_')"
@@ -40,8 +42,8 @@ code_printing
   | constant "(+) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ + _)"
   | constant "(-) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "max(0, _ - _)"
   | constant "(*) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ * _)"
-  | constant "(div) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ '/'/ _)"
-  | constant "(mod) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "(div) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(lambda a, b: a '/'/ b if b else 0)'(_, _')"
+  | constant "(mod) :: nat \<Rightarrow> nat \<Rightarrow> nat" \<rightharpoonup> (Python) "(lambda a, b: a % b if b else a)'(_, _')"
   | constant "HOL.equal :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
   | constant "(\<le>) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
   | constant "(<) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
@@ -70,8 +72,8 @@ code_printing
   | constant "(-) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ - _)"
   | constant "uminus :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(- _)"
   | constant "(*) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ * _)"
-  | constant "(div) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ '/'/ _)"
-  | constant "(mod) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "(div) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(lambda a, b: a '/'/ b if b else 0)'(_, _')"
+  | constant "(mod) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> Code_Numeral.integer" \<rightharpoonup> (Python) "(lambda a, b: a % b if b else a)'(_, _')"
   | constant Code_Numeral.divmod_abs \<rightharpoonup> (Python) "divmod(_, _)"
   | constant "HOL.equal :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
   | constant "(\<le>) :: Code_Numeral.integer \<Rightarrow> Code_Numeral.integer \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
@@ -105,8 +107,8 @@ code_printing
   | constant "(+) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ + _)"
   | constant "(-) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "max(0, _ - _)"
   | constant "(*) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ * _)"
-  | constant "(div) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ '/'/ _)"
-  | constant "(mod) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(_ % _)"
+  | constant "(div) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(lambda a, b: a '/'/ b if b else 0)'(_, _')"
+  | constant "(mod) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> Code_Numeral.natural" \<rightharpoonup> (Python) "(lambda a, b: a % b if b else a)'(_, _')"
   | constant "HOL.equal :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ == _)"
   | constant "(\<le>) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ <= _)"
   | constant "(<) :: Code_Numeral.natural \<Rightarrow> Code_Numeral.natural \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"

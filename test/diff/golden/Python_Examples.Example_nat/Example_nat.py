@@ -20,11 +20,11 @@ nat_product = ((6 * 7))
 nat_sub_pos = (max(0, 10 - 3))
 
 def nat_checksum(x, y):
-    return ((((((x * y)) % ((y + 1)))) + (max(0, x - y))))
+    return ((((lambda a, b: a % b if b else a)(((x * y)), ((y + 1)))) + (max(0, x - y))))
 
-nat_quotient = ((7 // 2))
+nat_quotient = ((lambda a, b: a // b if b else 0)(7, 2))
 
-nat_remainder = ((7 % 2))
+nat_remainder = ((lambda a, b: a % b if b else a)(7, 2))
 
 nat_sub_trunc = (max(0, 3 - 10))
 

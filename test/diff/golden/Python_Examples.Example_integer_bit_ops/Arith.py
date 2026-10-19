@@ -21,7 +21,7 @@ def power_integer():
     return Power.power(one_power = one_integer(), times_power = times_integer())
 
 def drop_bit(i, k):
-    return ((k // Power.powera(power_integer(), 2, (abs(i)))))
+    return ((lambda a, b: a // b if b else 0)(k, Power.powera(power_integer(), 2, (abs(i)))))
 
 def push_bit(i, k):
     return ((k * Power.powera(power_integer(), 2, (abs(i)))))
