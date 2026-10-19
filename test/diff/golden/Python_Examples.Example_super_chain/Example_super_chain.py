@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 
 def _unimplemented(name):
     raise NotImplementedError(name)
@@ -24,6 +25,7 @@ def label_of_item(x0):
 class labeled:
     label_of: Callable
 
+@functools.cache
 def labeled_item():
     return labeled(label_of = lambda a: label_of_item(a))
 
@@ -40,6 +42,7 @@ def size_label_item(x0):
 class measured:
     size_label: Callable
 
+@functools.cache
 def measured_item():
     return measured(size_label = lambda a: size_label_item(a))
 
@@ -58,6 +61,7 @@ class labeled_measured:
     measured_labeled_measured: Any
     full_description: Callable
 
+@functools.cache
 def labeled_measured_item():
     return labeled_measured(labeled_labeled_measured = labeled_item(), measured_labeled_measured = measured_item(), full_description = lambda a: full_description_item(a))
 
@@ -81,6 +85,7 @@ def tag_animal(x0):
 class tagged:
     tag: Callable
 
+@functools.cache
 def tagged_animal():
     return tagged(tag = lambda a: tag_animal(a))
 
@@ -112,9 +117,11 @@ class tagged_extra:
     tagged_verbose_tagged_extra: Any
     tag_extra: Callable
 
+@functools.cache
 def tagged_verbose_animal():
     return tagged_verbose(tagged_tagged_verbose = tagged_animal(), tag_verbose = lambda a: tag_verbose_animal(a))
 
+@functools.cache
 def tagged_extra_animal():
     return tagged_extra(tagged_verbose_tagged_extra = tagged_verbose_animal(), tag_extra = lambda a: tag_extra_animal(a))
 

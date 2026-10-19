@@ -63,7 +63,7 @@ val python_reserved_words =
    "raise", "return", "try", "while", "with", "yield", "match", "case"]
 
   (* these are symbols we use in addition to the standard reserved words *) 
-  @ ["dataclass", "Any", "Callable", "_unimplemented"];;
+  @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -391,7 +391,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                       fname, vs2) end
                 | curried_defs _ [] = error "internal error: hoisted lambda without parameters"
               val (def_stmt, fname, vars3) = curried_defs vars2 param_prettys
-              in ([PRaw def_stmt], vars3, IVar (SOME fname)) end
+              (* the lambda's parameters are local to the def: keep the outer
+                 bindings (only adding the def's name), but keep all names
+                 reserved so later fresh names cannot clash *)
+              val vars4 = (Symtab.update (fname, lookup_var vars3 fname) (fst vars), snd vars3)
+              in ([PRaw def_stmt], vars4, IVar (SOME fname)) end
       | anf_term vars (t as ICase _) =
           let val (x, vars') = invent_name vars "x"
           in ([PBind (x, t)], vars', IVar (SOME x)) end
@@ -546,7 +550,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       else if is_value sym andalso forall null dictss andalso null ts
       then [(Pretty.str o deresolve) sym]
       else
-        let val dict_pretty = map_filter (print_dicts some_thm vars BR) dictss
+        let
+          (* constructors take no dictionaries (as in SML), even when the type has sort
+             constraints, e.g. the abstype morphism vec_lambda of ('a, 'b::finite) vec *)
+          val dict_pretty = if safe_is_constr sym then []
+            else map_filter (print_dicts some_thm vars BR) dictss
         in call_with ((Pretty.str o deresolve) sym) dict_pretty end
       end
 
@@ -654,9 +662,13 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
+        val dict_args = print_dict_args vs
         val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
-          Pretty.enum "," "(" ")" (print_dict_args vs), Pretty.str ":"]
-      in Pretty.chunks [head, indent_block 4 body] end;
+          Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
+        (* an instance without dictionary arguments always builds the same
+           (frozen) dictionary, so build it once *)
+        val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
+      in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
     fun print_func_head const vctxt dicts params =
       Pretty.block [
@@ -687,7 +699,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
        dictionaries (`f_int = f`) can't be an alias: the dictionaries must be
        applied. Callers use the arity of the type (see args_num), so eta-expand
        to an ordinary function: `def f_int(a, aa): return f(dicts, a, aa)` *)
-    fun eta_expand_dict_alias n
+    fun eta_expand_dict_alias _ n
         (eq as { patterns = [], rhs = IConst (const as { dictss, ... }), thm }) =
           if n = 0 orelse forall null dictss then eq
           else
@@ -695,7 +707,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               val (vs_tys, body) = Code_Thingol.unfold_abs
                 (Code_Thingol.saturated_application n (const, []))
             in { patterns = map (IVar o fst) vs_tys, rhs = body, thm = thm } end
-      | eta_expand_dict_alias _ eq = eq;
+      (* The same holds for any pattern-less equation of a function that takes
+         dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
+         printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
+      | eta_expand_dict_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
+          if n = 0 orelse not takes_dicts then eq
+          else
+            let
+              val names = Name.invent
+                (Name.make_context (Code_Thingol.add_varnames rhs [])) "x" n
+              val vars = map (IVar o SOME) names
+            in { patterns = vars, rhs = rhs `$$ vars, thm = thm } end
+      | eta_expand_dict_alias _ _ eq = eq;
 
     (* This functions needs to distinguish different cases:
      *  - functions without any code equations => print `pass`
@@ -713,7 +736,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | print_python_func const { vs, ty, eqs = eqs0 } =
         let
           (* same as above, register typevar names to avoid name clashes *)
-          val eqs = map (eta_expand_dict_alias
+          val eqs = map (eta_expand_dict_alias (not (null (print_dict_args vs)))
            (length (fst (Code_Thingol.unfold_fun ty)))) eqs0
           val vctxt = intro_vars (map fst vs) reserved
           (* a `simple` function only has one equations, where all arguments
@@ -955,6 +978,15 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 
     val nonempty_names = map #1 module_stmts;
 
+    (* modules that print a cached (dictionary-free) instance need functools *)
+    fun needs_functools mod_name =
+      let val (stmt_gr, _) = Graph.get_node python_program mod_name
+      in Code_Symbol.Graph.fold (fn (_, ((_, stmt), _)) => fn b => b orelse
+          (case stmt of
+            SOME (_, Code_Thingol.Classinst { vs, ... }) => forall (null o snd) vs
+          | _ => false)) stmt_gr false
+      end;
+
     fun print_one_module (mod_name, imports, stmt_ps) =
       let
         val import_ps = imports
@@ -962,7 +994,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
         val imports_block = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
           :: Pretty.str "from typing import Any, Callable"
-          :: import_ps)
+          :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
+          @ import_ps)
         val unimplemented_def = Pretty.chunks
           [Pretty.str "def _unimplemented(name):",
            indent_block 4 (Pretty.str "raise NotImplementedError(name)")]

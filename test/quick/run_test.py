@@ -250,3 +250,11 @@ def test_iarray_pattern_and_exists():
     assert m.ia_head(()) == -1
     assert m.ia_head((4, 5)) == 4
     assert m.ia_any_neg((1, -2)) and not m.ia_any_neg(())
+
+
+# ---- instance dictionaries ----
+
+def test_dict_free_instance_is_built_once():
+    # instances without dictionary arguments are wrapped in functools.cache,
+    # so every use shares one (frozen) dictionary instead of rebuilding it
+    assert m.has_default_tag() is m.has_default_tag()

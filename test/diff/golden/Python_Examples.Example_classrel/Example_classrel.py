@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Example_classrel_base
 
 def _unimplemented(name):
@@ -8,9 +9,11 @@ def _unimplemented(name):
 def sup_apply_bool(b):
     return (b)
 
+@functools.cache
 def super_op_bool():
     return Example_classrel_base.super_op(sup_apply = lambda a: sup_apply_bool(a))
 
+@functools.cache
 def sub_op_bool():
     return Example_classrel_base.sub_op(super_op_sub_op = super_op_bool())
 
