@@ -283,3 +283,29 @@ def test_constructor_of_sorted_datatype():
 
 def test_pattern_less_dict_function():
     assert m.e_twice_twice == 12
+
+
+# ---- python_tail_calls (Quick_Test_Tail_Calls.thy, exported with the option on) ----
+
+def _load_tail_calls():
+    matches = list(PYTHON_OUT_ROOT.rglob("Quick_Test_Tail_Calls.py"))
+    if not matches:
+        pytest.skip("Quick_Test_Tail_Calls.py not generated")
+    sys.path.insert(0, str(matches[0].parent))
+    import Quick_Test_Tail_Calls
+    return Quick_Test_Tail_Calls
+
+
+def test_tail_calls_run_as_loops():
+    tc = _load_tail_calls()
+    # computed at import, 100000 calls deep without the loop
+    assert tc.tc_sum_big == 100000 * 100001 // 2
+    # the list is built in Python: upt itself is not tail recursive. Kept at 20000, as each
+    # [y, *ys] match copies the tail (quadratic), but still far deeper than 1000 frames.
+    assert tc.tc_count_le_int(10000, list(range(20000)), 0) == 10001
+
+
+def test_tail_calls_with_closures_stay_recursive():
+    tc = _load_tail_calls()
+    assert tc.tc_shift_small == 13
+    assert tc.tc_shift(3, lambda x: x)(0) == 3

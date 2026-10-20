@@ -4,6 +4,7 @@ sig
   val add_transparent_wrapper_sym: string -> theory -> theory
   val add_undefined_sym: string -> theory -> theory
   val enable_native_encoding: string -> theory -> theory
+  val tail_calls: bool Config.T
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -14,6 +15,16 @@ open Basic_Code_Thingol;
 open Code_Printer;
 
 val target = "Python";
+
+(* Print self tail calls as loops (see print_python_func). Off by default; set it with
+   `declare [[python_tail_calls]]` in a theory, or `isabelle build -o python_tail_calls`.
+   The system option is declared in etc/options, which Isabelle only reads for a registered
+   component; with just `isabelle build -d .` (as in CI) it is unknown, so fall back to a plain
+   configuration option, which `declare` can still set. *)
+val tail_calls =
+  if can Options.default_typ "python_tail_calls"
+  then Attrib.setup_option_bool ("python_tail_calls", \<^here>)
+  else Attrib.setup_config_bool \<^binding>\<open>python_tail_calls\<close> (K false);
 
 structure Transparent_Wrapper_Data = Theory_Data
 (
@@ -764,11 +775,63 @@ fun print_python_stmt undefineds const_syntax reserved args_num
              be printed as a plain value (i.e., an assignment x = ...) *)
           val prints_as_value = simple andalso null params andalso null dict_params
           val head = print_func_head const vars2 dict_params params
-          fun print_rhs some_thm vars t =
-            print_tail_expr some_thm
-              (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
-                print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
-              vars t
+          fun print_return some_thm vars' t' = Pretty.block [Pretty.str "return (",
+            print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"]
+
+          (* Tail calls: with the python_tail_calls option, a function that calls itself
+             in tail position runs its body in `while True:`, and each such call becomes
+             a reassignment of the parameters followed by `continue`. Python closures
+             capture variables, not values, so a closure created in one iteration would
+             see the rebinding of the next: functions whose equations create closures
+             (lambdas, or partial applications printed as lambdas) are left alone. *)
+          fun self_call t = case Code_Thingol.unfold_const_app t of
+              SOME (c as { sym = Constant name, ... }, ts) =>
+                if name = const andalso length ts = length params then SOME (c, ts) else NONE
+            | _ => NONE
+          fun has_self_tail_call (ICase { clauses, ... }) =
+                exists (has_self_tail_call o snd) clauses
+            | has_self_tail_call t = is_some (self_call t)
+          fun creates_closure (_ `|=> _) = true
+            | creates_closure (ICase { term, clauses, ... }) =
+                creates_closure term orelse exists (creates_closure o snd) clauses
+            | creates_closure t = (case Code_Thingol.unfold_const_app t of
+                SOME ({ sym, dictss, dom, ... }, ts) =>
+                  let val arity = the_default (length dom) (try args_num sym)
+                  in exists creates_closure ts orelse
+                    (length ts < arity andalso not (null ts andalso forall null dictss))
+                  end
+              | NONE => (case t of
+                  t1 `$ t2 => creates_closure t1 orelse creates_closure t2
+                | _ => false))
+          val loops = Config.get ctxt tail_calls andalso not (null params)
+            andalso exists (has_self_tail_call o #rhs) eqs
+            andalso not (exists (creates_closure o #rhs) eqs)
+          val param_strs = map_index (fn (_, SOME v) => lookup_var vars2 v
+            | (i, NONE) => "unused" ^ string_of_int i) params
+          val dict_strs = map Pretty.unformatted_string_of dict_params
+          fun print_finish some_thm vars' t' = case (if loops then self_call t' else NONE) of
+              NONE => print_return some_thm vars' t'
+            | SOME ({ dictss, ... }, ts) =>
+                let
+                  val new_dicts = map Pretty.unformatted_string_of
+                    (map_filter (print_dicts some_thm vars' BR) dictss)
+                  val new_args = map (Pretty.unformatted_string_of o
+                    print_python_expr const_syntax some_thm vars' NOBR) ts
+                  (* skip parameters that are passed on unchanged *)
+                  val changed = filter (fn (old, new) => old <> new)
+                    ((dict_strs ~~ new_dicts) @ (param_strs ~~ new_args))
+                  val assign = if null changed then []
+                    else [Pretty.str (commas (map fst changed) ^ " = " ^
+                      commas (map (enclose "(" ")" o snd) changed))]
+                in
+                  if length new_dicts <> length dict_strs
+                  then print_return some_thm vars' t'
+                  else Pretty.chunks (assign @ [Pretty.str "continue"])
+                end
+          fun print_rhs some_thm vars t = print_tail_expr some_thm (print_finish some_thm) vars t
+          fun loop_body body = if loops
+            then Pretty.chunks [Pretty.str "while True:", indent_block 4 body]
+            else body
         in
           if prints_as_value
           then
@@ -779,7 +842,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           then
             (* simple function, plain variable args *)
             let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in Pretty.chunks [head, indent_block 4 (print_rhs some_thm vars2 t)] end
+            in Pretty.chunks [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))] end
           else
             (* multiple equations and/or patterns in arguments, this compiles
                to a match/case over the arguments *)
@@ -807,9 +870,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               val arms = map print_one_equation eqs @
                 (if last_is_exhaustive then [] else [fallthrough_arm])
             in Pretty.chunks
-              [head, indent_block 4 (Pretty.chunks
+              [head, indent_block 4 (loop_body (Pretty.chunks
                 [Pretty.block [Pretty.str "match ", scrutinee, Pretty.str ":"],
-                 indent_block 4 (Pretty.chunks arms)])]
+                 indent_block 4 (Pretty.chunks arms)]))]
             end
         end;
 
