@@ -46,7 +46,7 @@ jobs:
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Examples
 
       - name: Run diff test suite
-        run: pytest test/diff/test_golden.py
+        run: pytest test/diff/run_test.py
 
   slow:
     runs-on: ubuntu-latest

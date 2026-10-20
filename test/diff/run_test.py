@@ -14,7 +14,7 @@ relative path rather than assuming an exact layout).
 
 Run with:
 
-    cd test/diff && pytest test_examples_golden.py -v
+    pytest test/diff/run_test.py -v
 
 Accepting a new baseline after a change to a *.thy file:
   1. Build normally (isabelle build -d . -e Python_Examples).

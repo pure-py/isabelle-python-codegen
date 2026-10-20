@@ -17,8 +17,14 @@ open Code_Printer;
 val target = "Python";
 
 (* Print self tail calls as loops (see print_python_func). Off by default; set it with
-   `declare [[python_tail_calls]]` in a theory or `isabelle build -o python_tail_calls`. *)
-val tail_calls = Attrib.setup_option_bool (\<^system_option>\<open>python_tail_calls\<close>, \<^here>);
+   `declare [[python_tail_calls]]` in a theory, or `isabelle build -o python_tail_calls`.
+   The system option is declared in etc/options, which Isabelle only reads for a registered
+   component; with just `isabelle build -d .` (as in CI) it is unknown, so fall back to a plain
+   configuration option, which `declare` can still set. *)
+val tail_calls =
+  if can Options.default_typ "python_tail_calls"
+  then Attrib.setup_option_bool ("python_tail_calls", \<^here>)
+  else Attrib.setup_config_bool \<^binding>\<open>python_tail_calls\<close> (K false);
 
 structure Transparent_Wrapper_Data = Theory_Data
 (
