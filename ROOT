@@ -39,6 +39,7 @@ session Python_Examples in "examples" = Python +
     Example_integer_bit_ops
     Example_class_dicts
     Example_iarray
+    Example_tail_calls
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
@@ -46,6 +47,7 @@ session Python_Test_Quick in "test/quick" = Python +
   options [timeout = 300]
   theories [document = false]
     Quick_Test
+    Quick_Test_Tail_Calls
   export_files (in "python_out") "*:**"
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +

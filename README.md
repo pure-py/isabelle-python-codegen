@@ -43,6 +43,31 @@ Python native integers for `int` and `nat`, as well as using Python's own
 list and tuple data types. Most people will probably want to use this setup for
 code generation.
 
+### Tail calls as loops
+
+Python does not eliminate tail calls, so a function that recurses once per
+element hits the default recursion limit of 1000 frames. With the option
+`python_tail_calls` (off by default), a function that calls itself in tail
+position is printed with its body inside `while True:`, and each such call
+becomes a reassignment of its parameters followed by `continue`. Set it for a
+whole build, without changing any theory:
+
+```bash
+isabelle build -o python_tail_calls -d . -e Python_Examples
+```
+
+or in a theory, before `export_code`:
+
+```isabelle
+declare [[python_tail_calls]]
+```
+
+Only direct self calls are turned into loops, not mutual recursion. A function
+whose equations create closures (a lambda, or a partial application printed as
+one) is left recursive: Python closures capture variables, not values, so a
+closure created in one iteration would see the next iteration's rebinding.
+`examples/Example_tail_calls.thy` shows both outputs side by side.
+
 ## Running the tests
 
 This repository comes with three test suites:
