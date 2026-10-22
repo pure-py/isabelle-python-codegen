@@ -175,6 +175,12 @@ def test_bare_reference_and_point_free_alias():
     assert m.p_ref_result == 7
 
 
+def test_bare_binary_constant_as_function_value():
+    # foldr add2 [1, 2, 3] 0 -- add2 passed bare must be curried, since foldr
+    # applies it one argument at a time
+    assert m.p_folded == 6
+
+
 def test_map_native_list():
     # map add_one [1, 2, 3] -- requires the native code_printing
     # registration for List.map (Python_Setup.thy); without it this

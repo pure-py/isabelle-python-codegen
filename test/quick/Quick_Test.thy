@@ -111,6 +111,9 @@ definition p_ref_result :: int where "p_ref_result = add2_ref 3 4"
 text \<open>requires the native code_printing registration for List.map\<close>
 definition p_mapped :: "int list" where "p_mapped = map add_one [1, 2, 3]"
 
+text \<open>bare binary constant as a function value, which foldr applies one argument at a time\<close>
+definition p_folded :: int where "p_folded = foldr add2 [1, 2, 3] 0"
+
 section \<open>code_numeral (integer/natural)\<close>
 
 definition cn_int_lit :: integer where "cn_int_lit = 42"
@@ -273,7 +276,7 @@ export_code
   classify classify_zero classify_other
   weird weird_zero weird_five
   describe_len describe_len_123
-  add2 add_one p_add_one_5 add2_ref p_ref_result p_mapped
+  add2 add_one p_add_one_5 add2_ref p_ref_result p_mapped p_folded
   cn_int_lit cn_add cn_sum cn_neg cn_nat_lit cn_nat_add cn_nat_sum
   r_origin3d r_move_z r_shifted3d r_total3d
   cls_default_b cls_double_a

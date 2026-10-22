@@ -546,7 +546,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in
       if length ts < l
       then
-        if null ts andalso forall null dictss
+        (* A bare unary constant is already a one-argument Python function; one of higher arity is
+           uncurried, so it is saturated into a curried lambda, since function values are applied
+           one argument at a time. *)
+        if null ts andalso forall null dictss andalso l = 1
         then [(Pretty.str o deresolve) sym]
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
@@ -706,13 +709,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           Pretty.str (print_python_string const), Pretty.str ")"])]
       end
 
-    (* A pattern-less equation whose rhs is a constant taking instance
-       dictionaries (`f_int = f`) can't be an alias: the dictionaries must be
-       applied. Callers use the arity of the type (see args_num), so eta-expand
-       to an ordinary function: `def f_int(a, aa): return f(dicts, a, aa)` *)
-    fun eta_expand_dict_alias _ n
+    (* A pattern-less equation whose rhs is a constant (`f_int = f`) can't be an
+       alias: callers use the arity of the type (see args_num), whereas a bare
+       constant of higher arity is printed as a curried lambda, and any instance
+       dictionaries must be applied. So eta-expand to an ordinary function:
+       `def f_int(a, aa): return f(dicts, a, aa)` *)
+    fun eta_expand_alias _ n
         (eq as { patterns = [], rhs = IConst (const as { dictss, ... }), thm }) =
-          if n = 0 orelse forall null dictss then eq
+          if n = 0 then eq
           else
             let
               val (vs_tys, body) = Code_Thingol.unfold_abs
@@ -721,7 +725,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       (* The same holds for any pattern-less equation of a function that takes
          dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
          printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
-      | eta_expand_dict_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
+      | eta_expand_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
           if n = 0 orelse not takes_dicts then eq
           else
             let
@@ -729,7 +733,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 (Name.make_context (Code_Thingol.add_varnames rhs [])) "x" n
               val vars = map (IVar o SOME) names
             in { patterns = vars, rhs = rhs `$$ vars, thm = thm } end
-      | eta_expand_dict_alias _ _ eq = eq;
+      | eta_expand_alias _ _ eq = eq;
 
     (* This functions needs to distinguish different cases:
      *  - functions without any code equations => print `pass`
@@ -747,7 +751,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | print_python_func const { vs, ty, eqs = eqs0 } =
         let
           (* same as above, register typevar names to avoid name clashes *)
-          val eqs = map (eta_expand_dict_alias (not (null (print_dict_args vs)))
+          val eqs = map (eta_expand_alias (not (null (print_dict_args vs)))
            (length (fst (Code_Thingol.unfold_fun ty)))) eqs0
           val vctxt = intro_vars (map fst vs) reserved
           (* a `simple` function only has one equations, where all arguments
@@ -798,7 +802,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 SOME ({ sym, dictss, dom, ... }, ts) =>
                   let val arity = the_default (length dom) (try args_num sym)
                   in exists creates_closure ts orelse
-                    (length ts < arity andalso not (null ts andalso forall null dictss))
+                    (length ts < arity
+                      andalso not (null ts andalso forall null dictss andalso arity = 1))
                   end
               | NONE => (case t of
                   t1 `$ t2 => creates_closure t1 orelse creates_closure t2
