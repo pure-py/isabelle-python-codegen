@@ -7,6 +7,11 @@ Prerequisite (run this first, from the project root):
 
     isabelle build -d . -e Python_Test_Oracle
 
+Then:
+
+    uv run pytest test/oracle/run_test.py -q --tb=line
+
+
 Each theory that runs python_export_checks exports oracle/manifest.json and
 the generated modules under test/oracle/python_out/<session>.<theory>/.
 Each check `c` in the manifest names the module that defines `c_ok` (the
@@ -24,12 +29,10 @@ import pytest
 THIS_DIR = Path(__file__).resolve().parent
 PYTHON_OUT_ROOT = THIS_DIR / "python_out"
 
-
 def _load_manifests():
     if not PYTHON_OUT_ROOT.exists():
         return []
     return sorted(PYTHON_OUT_ROOT.rglob("oracle/manifest.json"))
-
 
 def _cases():
     for manifest_path in _load_manifests():
@@ -41,7 +44,6 @@ def _cases():
                 id=f"{manifest_path.parent.parent.name}:{check['name']}",
             )
 
-
 _CASES = list(_cases())
 if not _CASES:
     pytest.skip(
@@ -50,9 +52,7 @@ if not _CASES:
         allow_module_level=True,
     )
 
-
 _loaded = {}
-
 
 def _import(code_dir, module):
     # Each export directory has its own copy of the same module names

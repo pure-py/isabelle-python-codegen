@@ -59,4 +59,6 @@ python_check tc_closure: "add_all [1, 2, 3] (\<lambda>z. z * 10) 1"
 python_check_grid tc_mutual: "\<lambda>n. (ev n, od n)" over "[0, 1, 6, 7]"
 python_check_grid tc_shift: "\<lambda>n. shift_left n [1::int, 2, 3]" over "[0, 1, 2, 4]"
 
+python_export_checks
+
 end
