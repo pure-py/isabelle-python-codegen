@@ -63,3 +63,11 @@ session Python_Test_Slow in "test/slow" = "HOL-Library" +
     Candidates
     Extract_Basic
     Extract_Full
+
+session Python_Test_Oracle in "test/oracle" = Python +
+  description "Differential tests against Isabelle's SML evaluator"
+  options [timeout = 300, document = false]
+  theories
+    Oracle_Cases
+    Oracle_Cases_TC
+  export_files (in "python_out") "*:**"
