@@ -104,6 +104,6 @@ def _source(fn):
     code = fn.__code__
     try:
         source = inspect.getsource(fn).strip()
-    except:
+    except Exception:
         source = "<source unavailable>"
     return f"{Path(code.co_filename).name}:{code.co_firstlineno}: {source}"
