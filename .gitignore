@@ -1,35 +1,11 @@
-###############################################################################
-# Isabelle
-###############################################################################
-
-# Session build directories
-output/
+# Build and test output
 python_out/
-heaps/
-browser_info/
-__pycache__/
 generated_basic/
 generated_full/
+__pycache__/
 
-# Generated documents
-*.pdf
-*.dvi
-*.ps
-*.aux
-*.log
-*.toc
-*.out
-*.bbl
-*.blg
-*.fls
-*.fdb_latexmk
-*.synctex.gz
-
-# Isabelle temporary files
+# Editor backups
 *.thy~
 *.ML~
-*.sml~
-*.scala~
 
-# MacOS files
 .DS_Store

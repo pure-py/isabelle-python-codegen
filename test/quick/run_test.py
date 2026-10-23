@@ -182,6 +182,12 @@ def test_map_native_list():
     assert m.p_mapped == [2, 3, 4]
 
 
+def test_bare_binary_constant_as_function_value():
+    # foldr add2 [1, 2, 3] 0 -- add2 passed bare must be curried, since foldr
+    # applies it one argument at a time
+    assert m.p_folded == 6
+
+
 # ---- code numerals ----
 
 def test_code_numeral_integer():

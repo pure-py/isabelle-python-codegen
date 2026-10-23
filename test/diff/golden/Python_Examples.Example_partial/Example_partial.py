@@ -10,7 +10,8 @@ def add2(x, y):
 
 add_one = (lambda a: add2(1, a))
 
-add2_ref = (add2)
+def add2_ref(a, b):
+    return (add2(a, b))
 
 p_mapped = (list(map(add_one, [1, 2, 3])))
 
