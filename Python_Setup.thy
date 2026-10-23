@@ -25,8 +25,8 @@ code_printing
 
 code_printing
     constant "abs :: int \<Rightarrow> int" \<rightharpoonup> (Python) "abs'(_')"
-  | constant "min" \<rightharpoonup> (Python) "min(_, _)"
-  | constant "max" \<rightharpoonup> (Python) "max(_, _)"
+    (* min and max are derived automatically from Isabelle's own definition as `if a <= b then a else b` .
+      This is coherent with Python's semantics and scales up to data types like sets and lists *)
 
 (* Bridge between int and integer *)
 code_printing
@@ -129,7 +129,7 @@ code_reserved (Python) len list map max min abs divmod
 code_printing
     type_constructor List.list \<rightharpoonup> (Python) "_ list"
   | constant List.list.Nil \<rightharpoonup> (Python) "[]"
-  
+
 code_printing
     constant "length" \<rightharpoonup> (Python) "len'(_')"
   | constant List.nth \<rightharpoonup> (Python) "_[_]"
@@ -140,7 +140,7 @@ setup \<open>
   let
     open Code_Thingol Code_Printer;
 
-    fun dest_list_literal (IConst { sym = Code_Symbol.Constant 
+    fun dest_list_literal (IConst { sym = Code_Symbol.Constant
           \<^const_name>\<open>List.list.Nil\<close>, ...}) = SOME []
       | dest_list_literal (IConst { sym = Code_Symbol.Constant
           \<^const_name>\<open>List.list.Cons\<close>, ...} `$ x `$ xs) =
@@ -157,7 +157,7 @@ setup \<open>
       | NONE =>
           Pretty.block [Pretty.str "[", print_term vars NOBR x, Pretty.str "] + ",
             print_term vars NOBR xs];
-    
+
   in
     (fn target =>
       Code_Target.set_printings (Code_Symbol.Constant (\<^const_name>\<open>List.list.Cons\<close>,
