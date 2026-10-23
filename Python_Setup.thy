@@ -49,7 +49,7 @@ code_printing
   | constant "(<) :: nat \<Rightarrow> nat \<Rightarrow> bool" \<rightharpoonup> (Python) "(_ < _)"
 
 code_printing
-    constant Code_Numeral.nat_of_integer \<rightharpoonup> (Python) "_"
+    constant Code_Numeral.nat_of_integer \<rightharpoonup> (Python) "max(0, _)"
   | constant Code_Numeral.integer_of_nat \<rightharpoonup> (Python) "_"
 
 setup \<open>
