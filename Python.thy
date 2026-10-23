@@ -38,9 +38,9 @@ code_printing
   | constant "HOL.equal :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
       (Python) "(_ == _)"
   | constant "(\<le>) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-      (Python) infixl 35 "<="
+      (Python) "(_ <= _)"
   | constant "(<) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-      (Python) infixl 35 "<"
+      (Python) "(_ < _)"
 
 setup \<open>
   Literal.add_code "Python"
