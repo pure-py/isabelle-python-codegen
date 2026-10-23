@@ -1,9 +1,9 @@
 theory Oracle_Cases_TC
-  imports Oracle_Cases
+  imports Oracle_Recursion
 begin
 
-text \<open>All checks again, exported with self tail calls printed as loops, plus
-  inputs too deep for Python's default recursion limit of 1000.\<close>
+text \<open>The recursion checks again, exported with self tail calls printed as loops,
+  plus inputs too deep for Python's default recursion limit of 1000.\<close>
 
 declare [[python_tail_calls]]
 
