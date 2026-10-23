@@ -546,9 +546,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in
       if length ts < l
       then
-        (* A bare unary constant is already a one-argument Python function; one of higher arity is
-           uncurried, so it is saturated into a curried lambda, since function values are applied
-           one argument at a time. *)
+        (* A unary constant is printed by name, since the corresponding Python function already takes
+           one argument. A constant of higher arity is eta-expanded, since the corresponding Python
+           function is uncurried but function values are applied one argument at a time. *)
         if null ts andalso forall null dictss andalso l = 1
         then [(Pretty.str o deresolve) sym]
         else [print_python_expr const_syntax some_thm vars BR
