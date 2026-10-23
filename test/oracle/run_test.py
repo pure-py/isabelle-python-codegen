@@ -20,6 +20,7 @@ generated t, for failure messages), both functions of a unit argument.
 """
 
 import importlib
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -72,12 +73,37 @@ def _import(code_dir, module):
 
 @pytest.mark.parametrize("code_dir,module,check", _CASES)
 def test_agrees_with_isabelle(code_dir, module, check):
-    m = _import(code_dir, module)
+    # Each failure's first line names the term and the verdict, since that line is
+    # all that --tb=line shows.
+    term = check["term"]
+    try:
+        m = _import(code_dir, module)
+    except Exception as e:
+        pytest.fail(f"{term}: module {module} does not import: {_describe(e)}",
+                    pytrace=False)
     name = check["name"]
-    if getattr(m, f"{name}_ok")(None) is not True:
-        actual = getattr(m, f"{name}_actual")(None)
-        pytest.fail(
-            f"{check['term']}\n"
-            f"  Isabelle: {check['expected']}\n"
-            f"  Python:   {actual!r}"
-        )
+    actual_fn = getattr(m, f"{name}_actual")
+    try:
+        ok = getattr(m, f"{name}_ok")(None)
+    except Exception as e:
+        pytest.fail(f"{term}: Isabelle gives {check['expected']}, "
+                    f"Python raises {_describe(e)}\n  {_source(actual_fn)}",
+                    pytrace=False)
+    if ok is not True:
+        pytest.fail(f"{term}: Isabelle gives {check['expected']}, "
+                    f"Python gives {actual_fn(None)!r}\n  {_source(actual_fn)}",
+                    pytrace=False)
+
+
+def _describe(e):
+    message = str(e).splitlines()[0] if str(e) else ""
+    return f"{type(e).__name__}: {message}" if message else type(e).__name__
+
+
+def _source(fn):
+    code = fn.__code__
+    try:
+        source = inspect.getsource(fn).strip()
+    except:
+        source = "<source unavailable>"
+    return f"{Path(code.co_filename).name}:{code.co_firstlineno}: {source}"

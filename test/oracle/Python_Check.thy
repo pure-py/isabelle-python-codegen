@@ -7,17 +7,22 @@ begin
 text \<open>
   Differential testing of the Python backend against Isabelle's SML evaluator.
 
-  \<^theory_text>\<open>python_check name: "t"\<close> evaluates \<open>t\<close> to \<open>r\<close> with SML code evaluation and
-  defines \<open>name_ok \<equiv> \<lambda>_::unit. t = r\<close> and \<open>name_actual \<equiv> \<lambda>_::unit. t\<close>. The
-  generated Python must then compute \<open>name_ok(None)\<close> as \<open>True\<close>. If \<open>r\<close> is \<open>True\<close> or
-  \<open>False\<close>, \<open>name_ok\<close> is \<open>t\<close> or \<open>\<not> t\<close>, so the check does not wrap a boolean term in
-  an equality of its own. A negative control is a check of \<open>t \<noteq> r\<close>.
-  \<^theory_text>\<open>python_check_grid name: "f" over "xs\<^sub>1" \<dots> "xs\<^sub>n"\<close> adds one check per
-  element of the cartesian product of the argument lists.
+  python_check name: "t" evaluates t to its value r with SML code evaluation and
+  defines two constants, both functions of a unit argument:
 
-  \<^theory_text>\<open>python_export_checks\<close> exports all checks of the theory to Python (like
-  \<^theory_text>\<open>export_code \<dots> in Python file_prefix "."\<close>) together with a manifest
-  \<open>oracle/manifest.json\<close> that the pytest runner reads.
+    name_ok      computes t = r; just t if r is True, not t if r is False
+                 (so a boolean term is not wrapped in an equality of its own)
+    name_actual  computes t, for failure messages
+
+  The generated Python must compute name_ok(None) as True. A negative control is
+  a check of t ~= r.
+
+  python_check_grid name: "f" over "xs1" ... "xsn" adds one check per element of
+  the cartesian product of the argument lists.
+
+  python_export_checks exports all checks of the theory to Python (like export_code
+  ... in Python file_prefix ".") together with a manifest oracle/manifest.json that
+  the pytest runner reads.
 \<close>
 
 ML \<open>
