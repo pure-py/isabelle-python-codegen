@@ -264,7 +264,7 @@ definition twice_twice :: "'a::plus \<Rightarrow> 'a" where
   "twice_twice = (\<lambda>x. x + x) \<circ> (\<lambda>x. x + x)"
 definition e_twice_twice :: int where "e_twice_twice = twice_twice 3"
 
-section \<open>Characters\<close>
+section \<open>characters\<close>
 
 definition ch_greeting :: string where "ch_greeting = ''hi''"
 definition ch_is_digit :: "char \<Rightarrow> bool" where "ch_is_digit c = (CHR ''0'' \<le> c \<and> c \<le> CHR ''9'')"

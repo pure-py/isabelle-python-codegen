@@ -324,8 +324,8 @@ def test_string_is_list_of_characters():
 
 
 def test_character_comparison():
-    assert m.ch_digit_yes is True
-    assert m.ch_digit_no is False
+    assert m.ch_digit_yes
+    assert not m.ch_digit_no
 
 
 def test_character_code():
