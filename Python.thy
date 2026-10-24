@@ -13,6 +13,11 @@ code_identifier
 code_printing
   constant Code.abort \<rightharpoonup> (Python) "raise RuntimeError(\"_\")"
 
+(* Print undefined as an unimplemented stub, without the warning for a function without code equations *)
+setup \<open>
+  Code_Python.add_undefined_sym \<^const_name>\<open>HOL.undefined\<close>
+\<close>
+
 (* unit *)
 code_printing
     type_constructor Product_Type.unit \<rightharpoonup> (Python) "None"

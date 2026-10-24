@@ -5,4 +5,4 @@ import HOL
 def _unimplemented(name):
     raise NotImplementedError(name)
 
-uses_undefined = (HOL.undefined())
+uses_undefined = (_unimplemented("undefined"))

@@ -315,3 +315,29 @@ def test_tail_calls_with_closures_stay_recursive():
     tc = _load_tail_calls()
     assert tc.tc_shift_small == 13
     assert tc.tc_shift(3, lambda x: x)(0) == 3
+
+
+# ---- characters ----
+
+def test_string_is_list_of_characters():
+    assert m.ch_greeting == ["h", "i"]
+
+
+def test_character_comparison():
+    assert m.ch_digit_yes is True
+    assert m.ch_digit_no is False
+
+
+def test_character_code():
+    assert m.ch_code_A == 65
+
+
+def test_implode_and_explode():
+    assert m.ch_literal == "hi"
+    assert m.ch_chars == ["a", "b"]
+
+
+def test_escaped_characters():
+    assert m.ch_newline == "\n"
+    assert m.ch_quote == '"'
+    assert m.ch_high == "\xe9"

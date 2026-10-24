@@ -13,7 +13,7 @@ def equal_int():
 
 @functools.cache
 def ord_int():
-    return Orderings.ord(less_eq = lambda a, b: (a <= b ), less = lambda a, b: (a < b))
+    return Orderings.orda(less_eq = lambda a, b: (a <= b ), less = lambda a, b: (a < b))
 
 @functools.cache
 def preorder_int():

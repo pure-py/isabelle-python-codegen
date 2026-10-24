@@ -40,8 +40,9 @@ things.
 
 `Python.Python_Setup` includes additional custom code printers to utilise 
 Python native integers for `int` and `nat`, as well as using Python's own
-list and tuple data types. Most people will probably want to use this setup for
-code generation.
+list and tuple data types, and one-character strings for `char`, so that a
+`string` is a list of one-character strings. Most people will probably want to
+use this setup for code generation.
 
 ### Tail calls as loops
 

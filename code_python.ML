@@ -4,6 +4,7 @@ sig
   val add_transparent_wrapper_sym: string -> theory -> theory
   val add_undefined_sym: string -> theory -> theory
   val enable_native_encoding: string -> theory -> theory
+  val print_python_string: string -> string
   val tail_calls: bool Config.T
 end;
 
@@ -75,6 +76,30 @@ val python_reserved_words =
 
   (* these are symbols we use in addition to the standard reserved words *) 
   @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
+
+(* Python builtins, which a generated name must not shadow in its module *)
+val python_builtins =
+  ["ArithmeticError", "AssertionError", "AttributeError", "BaseException", "BaseExceptionGroup",
+   "BlockingIOError", "BrokenPipeError", "BufferError", "BytesWarning", "ChildProcessError",
+   "ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError", "ConnectionResetError",
+   "DeprecationWarning", "EOFError", "Ellipsis", "EncodingWarning", "EnvironmentError", "Exception",
+   "ExceptionGroup", "FileExistsError", "FileNotFoundError", "FloatingPointError", "FutureWarning",
+   "GeneratorExit", "IOError", "ImportError", "ImportWarning", "IndentationError", "IndexError",
+   "InterruptedError", "IsADirectoryError", "KeyError", "KeyboardInterrupt", "LookupError", "MemoryError",
+   "ModuleNotFoundError", "NameError", "NotADirectoryError", "NotImplemented", "NotImplementedError",
+   "OSError", "OverflowError", "PendingDeprecationWarning", "PermissionError", "ProcessLookupError",
+   "PythonFinalizationError", "RecursionError", "ReferenceError", "ResourceWarning", "RuntimeError",
+   "RuntimeWarning", "StopAsyncIteration", "StopIteration", "SyntaxError", "SyntaxWarning", "SystemError",
+   "SystemExit", "TabError", "TimeoutError", "TypeError", "UnboundLocalError", "UnicodeDecodeError",
+   "UnicodeEncodeError", "UnicodeError", "UnicodeTranslateError", "UnicodeWarning", "UserWarning",
+   "ValueError", "Warning", "ZeroDivisionError", "abs", "aiter", "all", "anext", "any", "ascii", "bin",
+   "bool", "breakpoint", "bytearray", "bytes", "callable", "chr", "classmethod", "compile", "complex",
+   "copyright", "credits", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "exit",
+   "filter", "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex", "id",
+   "input", "int", "isinstance", "issubclass", "iter", "len", "license", "list", "locals", "map", "max",
+   "memoryview", "min", "next", "object", "oct", "open", "ord", "pow", "print", "property", "quit", "range",
+   "repr", "reversed", "round", "set", "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super",
+   "tuple", "type", "vars", "zip"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -1089,6 +1114,6 @@ val _ = Theory.setup
       run_command = Code_Target.run_command_bash (fn module_name =>
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
-  #> fold (Code_Target.add_reserved target) python_reserved_words);
+  #> fold (Code_Target.add_reserved target) (python_reserved_words @ python_builtins));
 
 end; (* struct *)

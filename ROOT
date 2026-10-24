@@ -40,6 +40,8 @@ session Python_Examples in "examples" = Python +
     Example_class_dicts
     Example_iarray
     Example_tail_calls
+    Example_chars
+    Example_builtin_names
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
