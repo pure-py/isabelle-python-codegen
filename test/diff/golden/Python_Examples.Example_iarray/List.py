@@ -5,6 +5,9 @@ import HOL
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def equal_list(a_dict, x0, x1):
     match (x0, x1):
         case ([], [x21, *x22]):

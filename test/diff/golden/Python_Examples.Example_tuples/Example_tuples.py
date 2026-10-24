@@ -5,6 +5,9 @@ import Num
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 point = ((3, 4))
 
 triple = ((1, ((2, 3))))

@@ -40,6 +40,18 @@ else:
     import Quick_Test as m
 
 
+# ---- Code.abort ----
+
+
+def test_abort_in_expression():
+    assert m.a_checked(3) == 3
+    assert m.a_nested(3) == 4
+    with pytest.raises(RuntimeError, match="negative"):
+        m.a_checked(-1)
+    with pytest.raises(RuntimeError, match="negative"):
+        m.a_nested(-1)
+
+
 # ---- tuples ----
 
 def test_tuple_values():

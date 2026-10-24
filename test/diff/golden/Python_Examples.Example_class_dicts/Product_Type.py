@@ -5,6 +5,9 @@ import HOL
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def equal_proda(a_dict, b_dict, x0, x1):
     match (x0, x1):
         case ((x1a, x2), (y1, y2)):

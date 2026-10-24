@@ -5,6 +5,9 @@ import Groups
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 @dataclass(frozen=True)
 class power:
     one_power: Any
