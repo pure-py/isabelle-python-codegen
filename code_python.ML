@@ -1062,15 +1062,18 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           | _ => false)) stmt_gr false
       end;
 
+    (* Full names of the theories in the context, by short name *)
+    val theory_long_names = Symtab.make (map (fn thy => (Context.theory_base_name thy,
+      Context.theory_long_name thy)) (Theory.nodes_of (Proof_Context.theory_of ctxt)));
+
     (* Full names of the theories defining the symbols of a module *)
     fun source_theories mod_name =
-      let
-        val (stmt_gr, _) = Graph.get_node python_program mod_name;
-        val long_name = Symtab.make (map (fn thy => (Context.theory_base_name thy,
-          Context.theory_long_name thy)) (Theory.nodes_of (Proof_Context.theory_of ctxt)));
-        val base_names = Code_Symbol.Graph.fold (insert (op =) o Code_Symbol.default_prefix ctxt o fst)
-          stmt_gr [];
-      in sort_strings (map (fn name => the_default name (Symtab.lookup long_name name)) base_names) end;
+      let val (stmt_gr, _) = Graph.get_node python_program mod_name
+      in
+        Code_Symbol.Graph.fold (insert (op =) o Code_Symbol.default_prefix ctxt o fst) stmt_gr []
+        |> map (the o Symtab.lookup theory_long_names)
+        |> sort_strings
+      end;
 
     fun print_header mod_name =
       let val thys = source_theories mod_name
