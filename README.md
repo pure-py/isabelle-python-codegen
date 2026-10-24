@@ -38,11 +38,9 @@ In order to use this generator you have to import one of the following theories:
 Strings), and relies on the automatically extracted HOL definitions for other
 things.
 
-`Python.Python_Setup` includes additional custom code printers to utilise 
-Python native integers for `int` and `nat`, as well as using Python's own
-list and tuple data types, and one-character strings for `char`, so that a
-`string` is a list of one-character strings. Most people will probably want to
-use this setup for code generation.
+`Python.Python_Setup` extends `Python.Python` by printing `int` and `nat` as
+Python integers, lists as Python lists, pairs as tuples and `char` as
+one-character strings.
 
 ### Tail calls as loops
 
