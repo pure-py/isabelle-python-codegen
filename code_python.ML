@@ -741,11 +741,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             in { patterns = vars, rhs = rhs `$$ vars, thm = thm } end
       | eta_expand_alias _ _ eq = eq;
 
-    (* This functions needs to distinguish different cases:
+    (* This function needs to distinguish different cases:
      *  - functions without any code equations, which are declared to abort => print a stub that aborts
      *  - value definitions (i.e., nullary functions), should not be printed as
      *      python functions, but as simple assignments
-     *  - simple functions (i.e., functions that only have one equations, and
+     *  - simple functions (i.e., functions that only have one equation, and
      *      where all the argument patterns are simple variables),
      *      these should be printed as standard python functions
      *  - functions that have multiple equations, or where there is a pattern
