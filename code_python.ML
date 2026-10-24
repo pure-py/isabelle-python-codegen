@@ -1058,6 +1058,25 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 
     val nonempty_names = map #1 module_stmts;
 
+    (* Stop if a definition has the name of a module imported by its module, which it would hide *)
+    fun check_imports (mod_name, imports, _) =
+      let
+        val (stmt_gr, _) = Graph.get_node python_program mod_name;
+        fun binds (sym as Constant _) = not (is_class_param sym)
+          | binds (Type_Class _) = true
+          | binds (Class_Instance _) = true
+          | binds _ = false;
+        val names = Code_Symbol.Graph.fold (fn (sym, ((base, _), _)) =>
+          if binds sym then insert (op =) base else I) stmt_gr [];
+      in
+        case filter (fn (imported, _) =>
+            member (op =) nonempty_names imported andalso member (op =) names imported) imports
+        of [] => ()
+         | (imported, _) :: _ =>
+            error ("Definition " ^ imported ^ " of module " ^ mod_name ^ " hides imported module " ^ imported)
+      end;
+    val _ = List.app check_imports module_stmts;
+
     (* modules that print a cached (dictionary-free) instance need functools *)
     fun needs_functools mod_name =
       let val (stmt_gr, _) = Graph.get_node python_program mod_name
