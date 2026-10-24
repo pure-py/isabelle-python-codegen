@@ -128,7 +128,8 @@ datatype python_stmt =
       eqs: eqtn list            (* code equations, see above *)
     }
 
-    (* A datatype definition (turns into one `@dataclass` per constructor) *)
+    (* A datatype definition (turns into one `@dataclass` per constructor, also when every constructor is
+       nullary, since PurePy has no enumerations) *)
   | Datatype of { 
       typarams: vname list,     (* type parameter names *)
       cnstrs: cnstr list        (* constructor list, see above *)
@@ -921,9 +922,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
+    (* A name clashing with a keyword or builtin gets a trailing underscore, following PEP 8; Name.variant
+       would append a letter, and treats a trailing underscore as marking an internal name *)
     fun namify_common base ((nsp_class, nsp_object), nsp_common) =
-      let val (base', nsp_common') = Name.variant base nsp_common
-      in (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), nsp_common')) end;
+      let
+        val base' = if Name.is_declared reserved base then base ^ "_" else base;
+        val (base'', nsp_common') =
+          if Name.is_declared nsp_common base' then Name.variant base' nsp_common
+          else (base', Name.declare base' nsp_common);
+      in (base'', ((Name.declare base'' nsp_class, Name.declare base'' nsp_object), nsp_common')) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt (Code_Thingol.Fun _) = namify_common

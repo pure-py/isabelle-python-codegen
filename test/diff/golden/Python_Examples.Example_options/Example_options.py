@@ -8,7 +8,7 @@ def _unimplemented(name):
 
 def describe_opt(x0):
     match x0:
-        case Option.Nonea():
+        case Option.None_():
             return (0)
         case Option.Some(x):
             return ((x + 1))
@@ -19,7 +19,7 @@ o_some = (Option.Some(5))
 
 d1 = (describe_opt(o_some))
 
-o_none = (Option.Nonea())
+o_none = (Option.None_())
 
 d2 = (describe_opt(o_none))
 
@@ -27,7 +27,7 @@ def describe_opt2(x0):
     match x0:
         case Option.Some(x):
             return ((x + 100))
-        case Option.Nonea():
+        case Option.None_():
             return ((- 1))
         case _:
             raise RuntimeError("match failed")

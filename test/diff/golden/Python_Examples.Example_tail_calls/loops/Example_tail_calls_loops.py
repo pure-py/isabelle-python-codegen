@@ -5,7 +5,7 @@ def _unimplemented(name):
     raise NotImplementedError(name)
 
 @dataclass(frozen=True)
-class orda:
+class ord_:
     less_eq: Callable
     less: Callable
 

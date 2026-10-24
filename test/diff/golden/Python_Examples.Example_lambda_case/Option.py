@@ -5,7 +5,7 @@ def _unimplemented(name):
     raise NotImplementedError(name)
 
 @dataclass(frozen=True)
-class Nonea:
+class None_:
     pass
 @dataclass(frozen=True)
 class Some:

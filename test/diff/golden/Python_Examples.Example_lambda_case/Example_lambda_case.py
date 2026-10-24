@@ -10,7 +10,7 @@ def doubled(xs):
 
 def sum_or_zero(x0):
     match x0:
-        case Option.Nonea():
+        case Option.None_():
             return (0)
         case Option.Some(n):
             return (n)
@@ -24,7 +24,7 @@ def sum_options_inline(xs):
     def lam(a):
         target = (a)
         match target:
-            case Option.Nonea():
+            case Option.None_():
                 return (0)
             case Option.Some(n):
                 return (n)

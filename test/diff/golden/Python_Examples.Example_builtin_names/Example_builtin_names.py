@@ -6,32 +6,32 @@ def _unimplemented(name):
     raise NotImplementedError(name)
 
 @dataclass(frozen=True)
-class inta:
+class int_:
     pass
 @dataclass(frozen=True)
-class stra:
+class str_:
     pass
 @dataclass(frozen=True)
-class objecta:
+class object_:
     pass
 
-def lena(x0):
+def len_(x0):
     match x0:
         case []:
             return (0)
         case [uu, *ps]:
-            return ((lena(ps) + 1))
+            return ((len_(ps) + 1))
         case _:
             raise RuntimeError("match failed")
 
-def hasha(p):
+def hash_(p):
     target = (p)
     match target:
-        case inta():
+        case int_():
             return (0)
-        case stra():
+        case str_():
             return (1)
-        case objecta():
+        case object_():
             return (2)
         case _:
             raise RuntimeError("match failed")
