@@ -69,7 +69,7 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
 (* Names bound by the header of a generated module; generated names must not hide these. *)
-val header_names = ["dataclass", "Any", "Callable", "functools", "_unimplemented", "_abort"];
+val header_names = ["dataclass", "Any", "Callable", "functools", "_abort"];
 
 (* Keywords and builtins of the target Python, except the wildcard _ printed by the generator; generated names
    must not hide these. *)
@@ -171,8 +171,7 @@ fun invent_names vars prefix n =
 
 (*
  * arguments:
- *   undefineds: intentionally unimplemented symbols, turn into 
- *                 `raise NotImplementedError(...)`
+ *   undefineds: intentionally unimplemented symbols, turn into `_abort(...)`
  *   const_syntax: custom registered code_printing declarations for constants
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
@@ -192,6 +191,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
        Declaration, construction and projection must all use this, as
        deresolve may rename (`equal` -> `equala`) or module-qualify. *)
     fun attr_name sym = Long_Name.base_name (deresolve sym);
+
+    (* Abort for a constant without code, named by its full name *)
+    fun print_abort const =
+      Pretty.block [Pretty.str "_abort(", Pretty.str (print_python_string const), Pretty.str ", None)"];
 
     (* extract the theory from the context *)
     val thy = Proof_Context.theory_of ctxt
@@ -579,10 +582,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       end
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
-      if List.exists (fn name => sym = Constant name) undefineds
-      then Pretty.block [Pretty.str "_unimplemented(",
-          Pretty.str (print_python_string (Code_Symbol.default_base sym)), Pretty.str ")"]
-      else
+      case find_first (fn name => sym = Constant name) undefineds of
+        SOME name => print_abort name
+      | NONE =>
         let
           fun stock fxy' ts' =
             gen_print_app (print_app_expr const_syntax) (print_python_expr const_syntax)
@@ -711,8 +713,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val dict_params = print_dict_args vs
         val head = print_func_head const vctxt dict_params (map SOME params)
       in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
-          Pretty.str (print_python_string const), Pretty.str ")"])]
+        indent_block 4 (Pretty.block [Pretty.str "return ", print_abort const])]
       end
 
     (* A pattern-less equation whose rhs is a constant (`f_int = f`) can't be an
@@ -1111,14 +1112,11 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           :: Pretty.str "from typing import Any, Callable"
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
-        val unimplemented_def = Pretty.chunks
-          [Pretty.str "def _unimplemented(name):",
-           indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
         val abort_def = Pretty.chunks
           [Pretty.str "def _abort(msg, thunk):",
            indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
       in ([mod_name ^ ".py"],
-        Pretty.chunks2 (print_header mod_name :: imports_block :: unimplemented_def :: abort_def :: stmt_ps))
+        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

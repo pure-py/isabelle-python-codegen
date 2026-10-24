@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import Option
 
-def _unimplemented(name):
-    raise NotImplementedError(name)
-
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 

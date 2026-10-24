@@ -13,7 +13,7 @@ code_identifier
 code_printing
   constant Code.abort \<rightharpoonup> (Python) "'_abort"
 
-(* Print undefined as an unimplemented stub, without the warning for a function without code equations *)
+(* Print undefined as an abort, without the warning for a function without code equations *)
 setup \<open>
   Code_Python.add_undefined_sym \<^const_name>\<open>HOL.undefined\<close>
 \<close>

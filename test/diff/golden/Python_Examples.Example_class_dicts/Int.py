@@ -6,9 +6,6 @@ import functools
 import Orderings
 import HOL
 
-def _unimplemented(name):
-    raise NotImplementedError(name)
-
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 

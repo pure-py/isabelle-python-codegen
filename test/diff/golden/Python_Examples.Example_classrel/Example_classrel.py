@@ -5,9 +5,6 @@ from typing import Any, Callable
 import functools
 import Example_classrel_base
 
-def _unimplemented(name):
-    raise NotImplementedError(name)
-
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
