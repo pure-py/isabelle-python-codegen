@@ -77,10 +77,14 @@ val python_reserved_words =
   (* these are symbols we use in addition to the standard reserved words *) 
   @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
 
-(* Names in the builtins module of the Python on the path, which a generated name must not shadow *)
-fun python_builtins () =
-  let val (out, rc) = Isabelle_System.bash_output "python3 -c 'import builtins; print(*dir(builtins))'"
-  in if rc = 0 then space_explode " " (trim_line out) else error ("No Python builtins: " ^ out) end;
+(* Names in the builtins module of the target Python, given by the version file in the directory of thy;
+   a generated name must not shadow them *)
+fun python_builtins thy =
+  let
+    val version = trim_line (File.read (Resources.master_directory thy + Path.basic ".python-version"));
+    val (out, rc) = Isabelle_System.bash_output ("uv run -q --no-project --python " ^ Bash.string version ^
+      " python -c 'import builtins; print(*dir(builtins))'");
+  in if rc = 0 then space_explode " " (trim_line out) else error ("No builtins of Python " ^ version) end;
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -1120,6 +1124,6 @@ val _ = Theory.setup
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
   #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) (python_reserved_words @ python_builtins ())) thy));
+    (distinct (op =) (python_reserved_words @ python_builtins thy)) thy));
 
 end; (* struct *)

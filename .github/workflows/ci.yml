@@ -16,17 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install python3/pip and pytest
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends python3 python3-pip
-          pip3 install --break-system-packages pytest 2>/dev/null || pip3 install pytest
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
 
       - name: extract Python code
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Quick
 
       - name: Run quick test suite
-        run: pytest test/quick/run_test.py
+        run: uv run pytest test/quick/run_test.py
 
   diff:
     runs-on: ubuntu-latest
@@ -36,17 +33,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install python3/pip and pytest
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends python3 python3-pip
-          pip3 install --break-system-packages pytest 2>/dev/null || pip3 install pytest
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
 
       - name: extract Python code
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Examples
 
       - name: Run diff test suite
-        run: pytest test/diff/run_test.py
+        run: uv run pytest test/diff/run_test.py
 
   slow:
     runs-on: ubuntu-latest
@@ -56,14 +50,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install python3
-        run: apt-get update && apt-get install -y --no-install-recommends python3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
 
       - name: extract Python code
         run: ISABELLE_PYTHON=1 /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Slow
 
       - name: syntax check generated code
         run: |
-          python3 -m py_compile test/slow/generated_basic/*.py
-          python3 -m py_compile test/slow/generated_full/*.py
+          uv run python -m py_compile test/slow/generated_basic/*.py
+          uv run python -m py_compile test/slow/generated_full/*.py
           
