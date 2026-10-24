@@ -68,8 +68,8 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
-(* Names bound by the header of a generated module; generated names must not hide these. *)
-val header_names = ["dataclass", "Any", "Callable", "functools", "_abort"];
+(* Names bound by the prelude of every generated module: its imports and the abort function *)
+val prelude_names = ["dataclass", "Any", "Callable", "functools", "_abort"];
 
 (* Keywords and builtins of the target Python, except the wildcard _ printed by the generator; generated names
    must not hide these. *)
@@ -1117,6 +1117,6 @@ val _ = Theory.setup
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
   #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) (python_names thy @ header_names)) thy));
+    (distinct (op =) (python_names thy @ prelude_names)) thy));
 
 end; (* struct *)
