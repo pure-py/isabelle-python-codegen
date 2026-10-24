@@ -900,9 +900,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* A name clashing with a reserved name or a module gets a trailing underscore, following PEP 8, since
-       an imported module and a definition share the namespace of a module; Name.variant would append a
-       letter, and treats a trailing underscore as marking an internal name *)
+    (* Add a trailing underscore to a name clashing with a reserved name or a module, following PEP 8 *)
     fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
       let
         val base' =
