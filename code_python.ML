@@ -175,7 +175,7 @@ fun invent_names vars prefix n =
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
- *   is_constr: true for any datatype constructor
+ *   is_constr: true for a datatype constructor without a printing
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *)
@@ -229,8 +229,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (x :: es, tail) end
       | _ => ([], t);
 
-    (* Allows us to detect constructors that have been pruned by custom printers *)
-    fun safe_is_constr sym = (case try is_constr sym of SOME b => b | NONE => false)
+    (* Number of arguments of a constant, as required by its printing if it has one *)
+    fun const_arity (sym as Constant c) = (case const_syntax c of SOME (k, _) => k | NONE => args_num sym)
+      | const_arity _ = raise Fail "should never be reached";
     
     (* Create patterns from iterms *)
     fun pattern_of_iterm vars (IVar NONE) = (PWild, [], [], vars)
@@ -241,7 +242,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           if sym = Constant "List.list.Nil" andalso use_native_encoding 
             thy "list"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
-          else if safe_is_constr sym andalso args_num sym = 0
+          else if is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
           else
             (* fallback, create a new name + attach guards *)
@@ -314,7 +315,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     fun exhaustive (IVar _) = true
       | exhaustive (IConst { sym, ... }) =
-          safe_is_constr sym andalso args_num sym = 0 andalso is_sole_constr sym
+          is_constr sym andalso args_num sym = 0 andalso is_sole_constr sym
       | exhaustive t =
           (case Code_Thingol.unfold_const_app t of
             SOME ({ sym, ... }, args) =>
@@ -575,7 +576,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         let
           (* constructors take no dictionaries (as in SML), even when the type has sort
              constraints, e.g. the abstype morphism vec_lambda of ('a, 'b::finite) vec *)
-          val dict_pretty = if safe_is_constr sym then []
+          val dict_pretty = if is_constr sym then []
             else map_filter (print_dicts some_thm vars BR) dictss
         in call_with ((Pretty.str o deresolve) sym) dict_pretty end
       end
@@ -803,8 +804,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             | creates_closure (ICase { term, clauses, ... }) =
                 creates_closure term orelse exists (creates_closure o snd) clauses
             | creates_closure t = (case Code_Thingol.unfold_const_app t of
-                SOME ({ sym, dictss, dom, ... }, ts) =>
-                  let val arity = the_default (length dom) (try args_num sym)
+                SOME ({ sym, dictss, ... }, ts) =>
+                  let val arity = const_arity sym
                   in exists creates_closure ts orelse
                     (length ts < arity
                       andalso not (null ts andalso forall null dictss andalso arity = 1))
@@ -992,6 +993,9 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         Code_Thingol.Class (_, (_, classparams)) => classparams
       | _ => raise Fail "should never be reached";
     
+    (* Datatype constructor, unless replaced by a printing and so absent from the program *)
+    fun is_constr sym = Code_Symbol.Graph.defined program sym andalso Code_Thingol.is_constr program sym;
+
     fun args_num (sym as Constant const) = (case Code_Symbol.Graph.get_node program sym
       of Code_Thingol.Fun (((_, ty), []), _) => (length o fst o Code_Thingol.unfold_fun) ty
         | Code_Thingol.Fun (((_, ty), ((ts, _), _) :: _), _) =>
@@ -1046,7 +1050,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               | (_, SOME (export, stmt)) =>
                   SOME (print_python_stmt undefineds const_syntax
                     (make_vars reserved_syms) args_num is_class_param is_value
-                    (Code_Thingol.is_constr program) ctxt (deresolver mod_name)
+                    is_constr ctxt (deresolver mod_name)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
