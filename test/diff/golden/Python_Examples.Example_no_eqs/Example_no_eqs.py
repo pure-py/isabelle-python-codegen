@@ -7,4 +7,4 @@ import HOL
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-uses_undefined = (_abort("HOL.undefined", None))
+uses_undefined = (HOL.undefined())

@@ -743,7 +743,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | eta_expand_alias _ _ eq = eq;
 
     (* This functions needs to distinguish different cases:
-     *  - functions without any code equations => print `pass`
+     *  - functions without any code equations, which are declared to abort => print a stub that aborts
      *  - value definitions (i.e., nullary functions), should not be printed as
      *      python functions, but as simple assignments
      *  - simple functions (i.e., functions that only have one equations, and
@@ -752,9 +752,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
      *  - functions that have multiple equations, or where there is a pattern
      *      in the arguments, these have to use match/case
      *)
-    fun print_python_func const (f as { eqs = [], ... }) =
-          let val _ = warning ("function " ^ const ^ " has no code equations")
-          in print_undefined_func_stub const f end
+    fun print_python_func const (f as { eqs = [], ... }) = print_undefined_func_stub const f
       | print_python_func const { vs, ty, eqs = eqs0 } =
         let
           (* same as above, register typevar names to avoid name clashes *)
