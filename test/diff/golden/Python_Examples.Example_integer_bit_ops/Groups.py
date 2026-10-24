@@ -8,8 +8,8 @@ def _abort(msg, thunk):
 
 @dataclass(frozen=True)
 class one:
-    onea: Callable
+    one_: Callable
 
 @dataclass(frozen=True)
 class times:
-    timesa: Callable
+    times_: Callable

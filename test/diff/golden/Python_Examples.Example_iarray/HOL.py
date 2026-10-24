@@ -8,7 +8,7 @@ def _abort(msg, thunk):
 
 @dataclass(frozen=True)
 class equal:
-    equala: Callable
+    equal_: Callable
 
 def eq(a_dict, aa, b):
-    return (a_dict.equala(aa, b))
+    return (a_dict.equal_(aa, b))

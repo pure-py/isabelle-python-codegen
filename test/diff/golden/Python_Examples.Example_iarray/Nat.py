@@ -10,4 +10,4 @@ def _abort(msg, thunk):
 
 @functools.cache
 def equal_nat():
-    return HOL.equal(equala = lambda a, b: (a == b))
+    return HOL.equal(equal_ = lambda a, b: (a == b))

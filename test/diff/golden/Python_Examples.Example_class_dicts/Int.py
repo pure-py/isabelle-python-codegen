@@ -11,7 +11,7 @@ def _abort(msg, thunk):
 
 @functools.cache
 def equal_int():
-    return HOL.equal(equala = lambda a, b: (a == b))
+    return HOL.equal(equal_ = lambda a, b: (a == b))
 
 @functools.cache
 def ord_int():
