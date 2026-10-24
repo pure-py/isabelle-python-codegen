@@ -993,7 +993,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         Code_Thingol.Class (_, (_, classparams)) => classparams
       | _ => raise Fail "should never be reached";
     
-    (* Datatype constructor, unless replaced by a printing and so absent from the program *)
+    (* Datatype constructor without a printing *)
     fun is_constr sym = Code_Symbol.Graph.defined program sym andalso Code_Thingol.is_constr program sym;
 
     fun args_num (sym as Constant const) = (case Code_Symbol.Graph.get_node program sym
