@@ -329,6 +329,11 @@ def test_tail_calls_with_closures_stay_recursive():
     assert tc.tc_shift(3, lambda x: x)(0) == 3
 
 
+# ---- names of modules ----
+
+def test_definition_named_after_module():
+    assert m.nm_option == 2
+
 # ---- characters ----
 
 def test_string_is_list_of_characters():

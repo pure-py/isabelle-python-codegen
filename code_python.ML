@@ -901,25 +901,21 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* A name clashing with a keyword or builtin gets a trailing underscore, following PEP 8; Name.variant
-       would append a letter, and treats a trailing underscore as marking an internal name *)
-    fun namify_common base ((nsp_class, nsp_object), nsp_common) =
+    (* A name clashing with a reserved name or a module gets a trailing underscore, following PEP 8, since
+       an imported module and a definition share the namespace of a module; Name.variant would append a
+       letter, and treats a trailing underscore as marking an internal name *)
+    fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
       let
-        val base' = if Name.is_declared reserved base then base ^ "_" else base;
+        val base' =
+          if Name.is_declared reserved base orelse member (op =) module_names base then base ^ "_" else base;
         val (base'', nsp_common') =
           if Name.is_declared nsp_common base' then Name.variant base' nsp_common
           else (base', Name.declare base' nsp_common);
       in (base'', ((Name.declare base'' nsp_class, Name.declare base'' nsp_object), nsp_common')) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
-    fun namify_stmt (Code_Thingol.Fun _) = namify_common
-      | namify_stmt (Code_Thingol.Datatype _) = namify_common
-      | namify_stmt (Code_Thingol.Datatypecons _) = namify_common
-      | namify_stmt (Code_Thingol.Class _) = namify_common
-      | namify_stmt (Code_Thingol.Classrel _) = namify_common
-      | namify_stmt (Code_Thingol.Classparam _) = namify_common
-      | namify_stmt (Code_Thingol.Classinst _) = namify_common
-      | namify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
+    fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
+      | namify_stmt module_names _ = namify_common module_names;
     
     (* Code_Thingol.stmt -> python_stmt option *)
     fun modify_stmt (Code_Thingol.Fun (_, SOME _)) = NONE
@@ -932,13 +928,16 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       | modify_stmt (Code_Thingol.Classparam _) = NONE
       | modify_stmt (stmt as Code_Thingol.Classinst _) = SOME stmt
       | modify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
-  in
-    Code_Namespace.flat_program ctxt
-      { module_prefix = "", module_name = module_name, reserved = reserved,
-        identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
-        namify_stmt = namify_stmt, modify_stmt = modify_stmt }
-      exports program
-  end;
+    fun flat_program module_names =
+      Code_Namespace.flat_program ctxt
+        { module_prefix = "", module_name = module_name, reserved = reserved,
+          identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+          namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
+        exports program;
+
+    (* Module names don't depend on the names of definitions, so a first pass finds them *)
+    val module_names = Graph.keys (#flat_program (flat_program []));
+  in flat_program module_names end;
 
 fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
     identifiers, includes, const_syntax, ... } program exports =
@@ -1056,25 +1055,6 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
 
     val nonempty_names = map #1 module_stmts;
-
-    (* Stop if a definition has the name of a module imported by its module, which it would hide *)
-    fun check_imports (mod_name, imports, _) =
-      let
-        val (stmt_gr, _) = Graph.get_node python_program mod_name;
-        fun binds (sym as Constant _) = not (is_class_param sym)
-          | binds (Type_Class _) = true
-          | binds (Class_Instance _) = true
-          | binds _ = false;
-        val names = Code_Symbol.Graph.fold (fn (sym, ((base, _), _)) =>
-          if binds sym then insert (op =) base else I) stmt_gr [];
-      in
-        case filter (fn (imported, _) =>
-            member (op =) nonempty_names imported andalso member (op =) names imported) imports
-        of [] => ()
-         | (imported, _) :: _ =>
-            error ("Definition " ^ imported ^ " of module " ^ mod_name ^ " hides imported module " ^ imported)
-      end;
-    val _ = List.app check_imports module_stmts;
 
     (* modules that print a cached (dictionary-free) instance need functools *)
     fun needs_functools mod_name =
