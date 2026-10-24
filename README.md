@@ -7,8 +7,8 @@ Python 3.
 
 - A recent Isabelle/HOL release (with `isabelle` on your `PATH`, currently only 
 `Isabelle2025-2` has been tested)
-- Python 3.10+ (generated pattern-matching code uses `match`/`case`)
-- `pytest`, if you want to run the tests
+- [uv](https://docs.astral.sh/uv/), which runs Python at the version in `.python-version`, the target version of
+  the generated code
 
 ## Installing as a component
 
@@ -38,10 +38,9 @@ In order to use this generator you have to import one of the following theories:
 Strings), and relies on the automatically extracted HOL definitions for other
 things.
 
-`Python.Python_Setup` includes additional custom code printers to utilise 
-Python native integers for `int` and `nat`, as well as using Python's own
-list and tuple data types. Most people will probably want to use this setup for
-code generation.
+`Python.Python_Setup` extends `Python.Python` by printing `int` and `nat` as
+Python integers, lists as Python lists, pairs as tuples and `char` as
+one-character strings.
 
 ### Tail calls as loops
 
@@ -79,7 +78,7 @@ and runs various tests defined in `/test/quick/run_test.py`.
 
 ```bash
 isabelle build -d . -e Python_Test_Quick
-pytest test/quick/run_test.py -v
+uv run pytest test/quick/run_test.py -v
 ```
 
 - **slow**
@@ -93,8 +92,8 @@ with `Python.Python_Setup`. Unfortunately, we can currently not use Isabelle's
 
 ```bash
 isabelle build -d . -e Python_Test_Slow
-python3 -m py_compile test/slow/generated_basic/*.py
-python3 -m py_compile test/slow/generated_full/*.py
+uv run python -m py_compile test/slow/generated_basic/*.py
+uv run python -m py_compile test/slow/generated_full/*.py
 ```
 
 - **diff**
@@ -106,7 +105,7 @@ suite holds golden reference files under `test/diff/golden/`.
 
 ```bash
 isabelle build -d . -e Python_Examples
-pytest test/diff/run_test.py
+uv run pytest test/diff/run_test.py
 ```
 
 If a new example is added, or the output has changed and is confirmed correct,
@@ -114,7 +113,7 @@ the golden files can be recreated by
 
 ```bash
 isabelle build -d . -e Python_Examples
-python3 test/diff/reseed_goldens.py
+uv run python test/diff/reseed_goldens.py
 ```
 
 ## Known limitations
