@@ -8,6 +8,9 @@ import Product_Type
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def swap(x0):
     match x0:
         case Product_Type.Pair(x, y):

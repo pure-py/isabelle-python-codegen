@@ -7,6 +7,9 @@ import Num
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def peel_positive_head(x0):
     match x0:
         case []:

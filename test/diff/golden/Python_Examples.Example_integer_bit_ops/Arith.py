@@ -10,6 +10,9 @@ import Groups
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 @functools.cache
 def one_integer():
     return Groups.one(onea = lambda : 1)

@@ -69,7 +69,7 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
 (* Names bound by the header of a generated module; generated names must not hide these. *)
-val header_names = ["dataclass", "Any", "Callable", "functools", "_unimplemented"];
+val header_names = ["dataclass", "Any", "Callable", "functools", "_unimplemented", "_abort"];
 
 (* Keywords and builtins of the target Python, except the wildcard _ printed by the generator; generated names
    must not hide these. *)
@@ -1114,8 +1114,11 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val unimplemented_def = Pretty.chunks
           [Pretty.str "def _unimplemented(name):",
            indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
+        val abort_def = Pretty.chunks
+          [Pretty.str "def _abort(msg, thunk):",
+           indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
       in ([mod_name ^ ".py"],
-        Pretty.chunks2 (print_header mod_name :: imports_block :: unimplemented_def :: stmt_ps))
+        Pretty.chunks2 (print_header mod_name :: imports_block :: unimplemented_def :: abort_def :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

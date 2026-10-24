@@ -8,5 +8,8 @@ import HOL
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def equal_iarray(a_dict, asa, bs):
     return (List.equal_list(a_dict, (list(asa)), (list(bs))))

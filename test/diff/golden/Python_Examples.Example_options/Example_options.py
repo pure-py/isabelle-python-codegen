@@ -8,6 +8,9 @@ import Option
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def describe_opt(x0):
     match x0:
         case Option.None_():

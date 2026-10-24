@@ -7,6 +7,9 @@ import Option
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def doubled(xs):
     return (list(map(lambda n: (n + n), xs)))
 

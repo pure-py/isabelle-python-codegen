@@ -7,6 +7,9 @@ import functools
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 @dataclass(frozen=True)
 class Box:
     pass

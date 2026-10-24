@@ -277,7 +277,16 @@ definition ch_newline :: char where "ch_newline = CHR 0x0A"
 definition ch_quote :: char where "ch_quote = CHR 0x22"
 definition ch_high :: char where "ch_high = CHR 0xE9"
 
+section \<open>Code.abort in expression position\<close>
+
+definition a_checked :: "int \<Rightarrow> int" where
+  "a_checked x = (if x < 0 then Code.abort (STR ''negative'') (\<lambda>_. x) else x)"
+
+definition a_nested :: "int \<Rightarrow> int" where
+  "a_nested x = 1 + (if x < 0 then Code.abort (STR ''negative'') (\<lambda>_. x) else x)"
+
 export_code
+  a_checked a_nested
   t_point t_swap t_add_points t_points_sum
   i_quotient_neg i_remainder_neg i_checksum
   n_sub_trunc n_sub_pos n_literal
