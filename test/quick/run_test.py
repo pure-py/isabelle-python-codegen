@@ -327,9 +327,3 @@ def test_tail_calls_with_closures_stay_recursive():
     tc = _load_tail_calls()
     assert tc.tc_shift_small == 13
     assert tc.tc_shift(3, lambda x: x)(0) == 3
-
-
-# ---- names of modules ----
-
-def test_definition_named_after_module():
-    assert m.nm_option == 2

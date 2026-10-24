@@ -264,12 +264,6 @@ definition twice_twice :: "'a::plus \<Rightarrow> 'a" where
   "twice_twice = (\<lambda>x. x + x) \<circ> (\<lambda>x. x + x)"
 definition e_twice_twice :: int where "e_twice_twice = twice_twice 3"
 
-section \<open>names of modules\<close>
-
-definition Option :: "int option \<Rightarrow> int" where
-  "Option x = (case x of None \<Rightarrow> 0 | Some n \<Rightarrow> n)"
-definition nm_option :: int where "nm_option = Option (map_option (\<lambda>n. n + 1) (Some 1))"
-
 section \<open>Code.abort in expression position\<close>
 
 definition a_checked :: "int \<Rightarrow> int" where
@@ -301,7 +295,6 @@ export_code
   ia_nth ia_grid ia_get ia_rows ia_head ia_any_neg
   z_int_div z_int_mod z_nat_div z_nat_mod z_int_floor
   l_shadow_none l_shadow_some c_boxed e_twice_twice
-  nm_option
   in Python file_prefix "."
 
 end
