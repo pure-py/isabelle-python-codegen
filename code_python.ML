@@ -68,14 +68,8 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
-(* Names imported by the header of every generated module, with their modules *)
-val header_imports = [("dataclasses", ["dataclass"]), ("typing", ["Any", "Callable"])];
-
-(* Module imported by a generated module with a cached instance *)
-val functools = "functools";
-
-(* Function defined by the header of every generated module, called for a constant without code equations *)
-val unimplemented = "_unimplemented";
+(* Names bound by the header of a generated module; generated names must not hide these. *)
+val header_names = ["dataclass", "Any", "Callable", "functools", "_unimplemented"];
 
 (* Keywords and builtins of the target Python, except the wildcard _ printed by the generator; generated names
    must not hide these. *)
@@ -586,7 +580,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
       if List.exists (fn name => sym = Constant name) undefineds
-      then Pretty.block [Pretty.str (unimplemented ^ "("),
+      then Pretty.block [Pretty.str "_unimplemented(",
           Pretty.str (print_python_string (Code_Symbol.default_base sym)), Pretty.str ")"]
       else
         let
@@ -693,7 +687,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
         (* an instance without dictionary arguments always builds the same
            (frozen) dictionary, so build it once *)
-        val decorator = if null dict_args then [Pretty.str ("@" ^ functools ^ ".cache")] else []
+        val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
     fun print_func_head const vctxt dicts params =
@@ -1094,12 +1088,12 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val import_ps = imports
           |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
-        val imports_block = Pretty.chunks
-          (map (fn (m, names) => Pretty.str ("from " ^ m ^ " import " ^ commas names)) header_imports
-          @ (if needs_functools mod_name then [Pretty.str ("import " ^ functools)] else [])
+        val imports_block = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
+          :: Pretty.str "from typing import Any, Callable"
+          :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
         val unimplemented_def = Pretty.chunks
-          [Pretty.str ("def " ^ unimplemented ^ "(name):"),
+          [Pretty.str "def _unimplemented(name):",
            indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
       in ([mod_name ^ ".py"],
         Pretty.chunks2 (print_header mod_name :: imports_block :: unimplemented_def :: stmt_ps))
@@ -1125,6 +1119,6 @@ val _ = Theory.setup
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
   #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) (python_names thy @ maps snd header_imports @ [functools, unimplemented])) thy));
+    (distinct (op =) (python_names thy @ header_names)) thy));
 
 end; (* struct *)
