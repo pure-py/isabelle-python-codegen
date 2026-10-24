@@ -74,7 +74,7 @@ val python_reserved_words =
    "raise", "return", "try", "while", "with", "yield", "match", "case"]
 
   (* these are symbols we use in addition to the standard reserved words *) 
-  @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
+  @ ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];;
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -1067,7 +1067,10 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val unimplemented_def = Pretty.chunks
           [Pretty.str "def _unimplemented(name):",
            indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
-      in ([mod_name ^ ".py"], Pretty.chunks2 (imports_block :: unimplemented_def :: stmt_ps))
+        val abort_def = Pretty.chunks
+          [Pretty.str "def _abort(msg, thunk):",
+           indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
+      in ([mod_name ^ ".py"], Pretty.chunks2 (imports_block :: unimplemented_def :: abort_def :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

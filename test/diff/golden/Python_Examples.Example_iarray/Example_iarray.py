@@ -7,6 +7,9 @@ import Nat
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def sum_ends(a):
     return (((a[0]) + (a[(max(0, (len(a)) - 1))])))
 

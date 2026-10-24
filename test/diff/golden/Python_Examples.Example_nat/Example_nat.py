@@ -5,6 +5,9 @@ import Num
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 nat_sum = ((6 + 7))
 
 nat_eq_test = ((4 == 4))

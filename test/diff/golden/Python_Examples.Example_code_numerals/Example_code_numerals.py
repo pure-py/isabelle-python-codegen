@@ -5,6 +5,9 @@ import Num
 def _unimplemented(name):
     raise NotImplementedError(name)
 
+def _abort(msg, thunk):
+    raise RuntimeError(msg)
+
 def cn_add(x, y):
     return ((x + y))
 
