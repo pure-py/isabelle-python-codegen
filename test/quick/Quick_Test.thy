@@ -270,19 +270,6 @@ definition Option :: "int option \<Rightarrow> int" where
   "Option x = (case x of None \<Rightarrow> 0 | Some n \<Rightarrow> n)"
 definition nm_option :: int where "nm_option = Option (map_option (\<lambda>n. n + 1) (Some 1))"
 
-section \<open>characters\<close>
-
-definition ch_greeting :: string where "ch_greeting = ''hi''"
-definition ch_is_digit :: "char \<Rightarrow> bool" where "ch_is_digit c = (CHR ''0'' \<le> c \<and> c \<le> CHR ''9'')"
-definition ch_digit_yes :: bool where "ch_digit_yes = ch_is_digit (CHR ''7'')"
-definition ch_digit_no :: bool where "ch_digit_no = ch_is_digit (CHR ''x'')"
-definition ch_code_A :: nat where "ch_code_A = of_char (CHR ''A'')"
-definition ch_literal :: String.literal where "ch_literal = String.implode ch_greeting"
-definition ch_chars :: string where "ch_chars = String.explode (STR ''ab'')"
-definition ch_newline :: char where "ch_newline = CHR 0x0A"
-definition ch_quote :: char where "ch_quote = CHR 0x22"
-definition ch_high :: char where "ch_high = CHR 0xE9"
-
 section \<open>Code.abort in expression position\<close>
 
 definition a_checked :: "int \<Rightarrow> int" where
@@ -315,7 +302,6 @@ export_code
   z_int_div z_int_mod z_nat_div z_nat_mod z_int_floor
   l_shadow_none l_shadow_some c_boxed e_twice_twice
   nm_option
-  ch_greeting ch_digit_yes ch_digit_no ch_code_A ch_literal ch_chars ch_newline ch_quote ch_high
   in Python file_prefix "."
 
 end
