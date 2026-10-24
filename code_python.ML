@@ -932,7 +932,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
           namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
         exports program;
 
-    (* Module names don't depend on the names of definitions, so a first pass finds them *)
+    (* Find the module names by a first pass *)
     val module_names = Graph.keys (#flat_program (flat_program []));
   in flat_program module_names end;
 
