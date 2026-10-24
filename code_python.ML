@@ -108,8 +108,7 @@ datatype python_stmt =
       eqs: eqtn list            (* code equations, see above *)
     }
 
-    (* A datatype definition (turns into one `@dataclass` per constructor, also when every constructor is
-       nullary, since PurePy has no enumerations) *)
+    (* A datatype definition (turns into one `@dataclass` per constructor) *)
   | Datatype of { 
       typarams: vname list,     (* type parameter names *)
       cnstrs: cnstr list        (* constructor list, see above *)
