@@ -77,8 +77,7 @@ val python_reserved_words =
   (* these are symbols we use in addition to the standard reserved words *) 
   @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
 
-(* Names in the builtins module of the target Python, given by the version file in the directory of thy;
-   a generated name must not shadow them *)
+(* Names in the builtins module of the target Python *)
 fun python_builtins thy =
   let
     val version = trim_line (File.read (Resources.master_directory thy + Path.basic ".python-version"));
