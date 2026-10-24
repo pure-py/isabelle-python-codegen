@@ -229,7 +229,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (x :: es, tail) end
       | _ => ([], t);
 
-    (* Number of arguments of a constant, as required by its printing if it has one *)
+    (* Arity of a constant, or of its printing if it has one *)
     fun const_arity (sym as Constant c) = (case const_syntax c of SOME (k, _) => k | NONE => args_num sym)
       | const_arity _ = raise Fail "should never be reached";
     
