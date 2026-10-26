@@ -18,38 +18,50 @@ def if_case(xs):
             return (False)
 
 def conj_case(xs):
-    if ((List.hd(xs) == 0)):
-        x = (True)
+    if (not List.null(xs)):
+        if ((List.hd(xs) == 0)):
+            x = (True)
+        else:
+            x = (False)
     else:
         x = (False)
-    return (not List.null(xs) and x)
+    return (x)
 
 def disj_case(xs):
-    if ((List.hd(xs) == 0)):
+    if (List.null(xs)):
         x = (True)
     else:
-        x = (False)
-    return (List.null(xs) or x)
+        if ((List.hd(xs) == 0)):
+            x = (True)
+        else:
+            x = (False)
+    return (x)
 
 def impl_case(xs):
-    if ((List.hd(xs) == 0)):
-        x = (True)
+    if (not List.null(xs)):
+        if ((List.hd(xs) == 0)):
+            x = (True)
+        else:
+            x = (False)
     else:
-        x = (False)
-    return ((not (not List.null(xs)) or x))
+        x = (True)
+    return (x)
 
 if_case_empty = (if_case([]))
 
 def conj_case_list(xss):
-    target = (List.hd(xss))
-    match target:
-        case []:
-            x = (True)
-        case [_, *_]:
-            x = (False)
-        case _:
-            raise RuntimeError("match failed")
-    return (not List.null(xss) and x)
+    if (not List.null(xss)):
+        target = (List.hd(xss))
+        match target:
+            case []:
+                x = (True)
+            case [_, *_]:
+                x = (False)
+            case _:
+                raise RuntimeError("match failed")
+    else:
+        x = (False)
+    return (x)
 
 conj_case_zero = (conj_case([0]))
 
