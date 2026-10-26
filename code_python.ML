@@ -215,7 +215,13 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     (* A "preamble" entry is a statement that needs to run before the
        expression that depends on it *)
-    datatype python_preamble = PBind of string * iterm | PRaw of Pretty.T;
+    (* A branch of a short-circuiting connective: a term, or a fixed truth value *)
+    datatype python_branch = BTerm of iterm | BBool of bool;
+
+    datatype python_preamble = PBind of string * iterm | PRaw of Pretty.T
+      (* `x = (cond ? then : else)`, printed as an if statement so that only the
+         branch that is taken gets evaluated *)
+      | PIf of string * iterm * python_branch * python_branch;
 
     val fallthrough_arm = Pretty.chunks
       [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
@@ -363,13 +369,35 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val body = Pretty.chunks (preamble @ [body_pretty vars'])
       in (header, vars', body) end
   
+    (* The connectives are printed as Python's short-circuiting `and`/`or`, so the
+       right operand is only evaluated when the left one does not decide the result.
+       Hoisting statements out of the right operand would evaluate them
+       unconditionally; such a connective is turned into an if statement instead. *)
+    and short_circuit t =
+      case Code_Thingol.unfold_const_app t of
+        SOME ({ sym = Constant c, ... }, [a, b]) =>
+          if is_stmt_free b then NONE
+          else (case c of
+              "HOL.conj" => SOME (a, BTerm b, BBool false)
+            | "HOL.disj" => SOME (a, BBool true, BTerm b)
+            | "HOL.implies" => SOME (a, BTerm b, BBool true)
+            | _ => NONE)
+      | _ => NONE
+
     and anf_term vars (t as IConst _) = ([], vars, t)
       | anf_term vars (t as IVar _) = ([], vars, t)
-      | anf_term vars (t1 `$ t2) =
-          let
-            val (b1, vars1, t1') = anf_term vars t1;
-            val (b2, vars2, t2') = anf_term vars1 t2;
-          in (b1 @ b2, vars2, t1' `$ t2') end
+      | anf_term vars (t as t1 `$ t2) =
+          (case short_circuit t of
+            SOME (cond, t_branch, e_branch) =>
+              let
+                val (bc, vars1, cond') = anf_term vars cond;
+                val (x, vars2) = invent_name vars1 "x";
+              in (bc @ [PIf (x, cond', t_branch, e_branch)], vars2, IVar (SOME x)) end
+          | NONE =>
+              let
+                val (b1, vars1, t1') = anf_term vars t1;
+                val (b2, vars2, t2') = anf_term vars1 t2;
+              in (b1 @ b2, vars2, t1' `$ t2') end)
       | anf_term vars (t as (_, _) `|=> (_, _)) =
           if is_stmt_free t
           then ([], vars, t)
@@ -461,6 +489,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_preamble some_thm vars (PBind (name, t)) = print_binding some_thm vars (name, t)
       | print_preamble _ _ (PRaw p) = p
+      | print_preamble some_thm vars (PIf (name, cond, t_branch, e_branch)) =
+          let
+            fun branch (BTerm t) = print_binding some_thm vars (name, t)
+              | branch (BBool b) =
+                  Pretty.str (name ^ " = (" ^ (if b then "True" else "False") ^ ")")
+          in
+            Pretty.chunks [
+              Pretty.block [Pretty.str "if (",
+                print_python_expr const_syntax some_thm vars NOBR cond, Pretty.str "):"],
+              indent_block 4 (branch t_branch),
+              Pretty.str "else:",
+              indent_block 4 (branch e_branch)]
+          end
 
     and print_case_block some_thm finish vars target clauses =
       let
