@@ -119,7 +119,10 @@ fun json_string s =
     fun esc #"\"" = "\\\""
       | esc #"\\" = "\\\\"
       | esc #"\n" = "\\n"
-      | esc c = if Char.ord c < 32 then "" else String.str c;
+      | esc c =
+          if Char.ord c < 32
+          then "\\u" ^ StringCvt.padLeft #"0" 4 (Int.fmt StringCvt.HEX (Char.ord c))
+          else String.str c;
   in quote (String.translate esc s) end;
 
 fun json_of_check ({name, module, term, expected}: check) =
