@@ -17,7 +17,7 @@ squares = (tuple(map(lambda i: (i * i), range((max(0, 4))))))
 example = (((list(squares)), ((sum_ends(squares), (((all(map(lambda x: (x < (max(0, 10))), squares))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, max(0, 2)]))))), (tuple([max(0, 2), max(0, 3)])))))))))
 
 def sub_pair(p):
-    return ((lambda a, i: a[i])(*p))
+    return ((lambda p: p[0][p[1]])(p))
 
 example_nth = ([10, 20, 30][1])
 

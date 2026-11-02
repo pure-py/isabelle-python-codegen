@@ -782,18 +782,36 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
-    fun print_func_head const vctxt dicts params =
-      Pretty.block [
-        Pretty.str "def ",
-        Pretty.str (deresolve_const const),
-        Pretty.enum "," "(" ")" (
-          dicts @
-          map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
-                      | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
-            params
-        ),
-        Pretty.str ":"
-      ]
+    (* Annotations of a function of type ty that takes n parameters: the types of the
+       parameters, and the rest of the type as the return type (a function that returns a
+       function value returns it curried, see print_typ). So far only for monomorphic
+       functions. *)
+    fun func_signature vs ty n =
+      if not annotate orelse not (null vs) then NONE
+      else
+        let
+          val tyvars = intro_tyvars []
+          val (tys, ran) = Code_Thingol.unfold_fun ty
+          val (param_tys, rest) = chop n tys
+        in
+          if length param_tys <> n then NONE
+          else SOME (map (print_typ tyvars) param_tys, print_typ tyvars (rest `--> ran))
+        end
+
+    fun print_func_head const vctxt dicts params func_sig =
+      let
+        val param_prettys = map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
+                                        | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
+          params
+        val (typed_params, ret) = case func_sig of
+            NONE => (param_prettys, [])
+          | SOME (tys, ran) =>
+              (map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) param_prettys tys,
+               [Pretty.str " -> ", ran])
+      in
+        Pretty.block ([Pretty.str "def ", Pretty.str (deresolve_const const),
+          Pretty.enum "," "(" ")" (dicts @ typed_params)] @ ret @ [Pretty.str ":"])
+      end
 
     fun print_undefined_func_stub const { vs, ty, ... } =
       let
@@ -802,6 +820,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val (params, vctxt) = invent_names vctxt "a" arity
         val dict_params = print_dict_args vs
         val head = print_func_head const vctxt dict_params (map SOME params)
+          (func_signature vs ty arity)
       in Pretty.chunks [head,
         indent_block 4 (Pretty.block [Pretty.str "return ", print_abort const])]
       end
@@ -873,7 +892,8 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           (* a simple function without parameters and dictionary arguments can
              be printed as a plain value (i.e., an assignment x = ...) *)
           val prints_as_value = simple andalso null params andalso null dict_params
-          val head = print_func_head const vars2 dict_params params
+          val func_sig = func_signature vs ty (length params)
+          val head = print_func_head const vars2 dict_params params func_sig
           fun print_return some_thm vars' t' = Pretty.block [Pretty.str "return (",
             print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"]
 
@@ -935,9 +955,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         in
           if prints_as_value
           then
-            (* value definition: `const = (expr)` *)
-            let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in print_binding some_thm vars2 (deresolve_const const, t) end
+            (* value definition: `const = (expr)`, or `const: T = (expr)`; if the
+               value is computed by a match, every arm gets the annotation *)
+            let
+              val { rhs = t, thm = some_thm, ... } = hd eqs
+              val target = case func_sig of
+                  NONE => deresolve_const const
+                | SOME (_, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
+            in print_binding some_thm vars2 (target, t) end
           else if simple
           then
             (* simple function, plain variable args *)

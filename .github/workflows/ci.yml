@@ -50,8 +50,8 @@ jobs:
       - name: extract Python code with type annotations
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
 
-      # TODO: drop continue-on-error once function signatures are annotated; until then
-      # pyright cannot see that a match without a fallthrough arm is exhaustive
+      # TODO: drop continue-on-error once polymorphic functions are annotated; until then
+      # pyright cannot see that their matches without a fallthrough arm are exhaustive
       - name: type-check generated code
         continue-on-error: true
         run: uv run pyright examples/python_out
