@@ -65,12 +65,19 @@ fun ok_term t r =
 fun check name t lthy =
   let
     val thy = Proof_Context.theory_of lthy;
+    val module = Context.theory_base_name thy;
+    (*in a locale or class the constants would be named after it and take its
+      parameters, so neither const_names nor the runner's name_ok(None) would find them*)
+    val full_name = Local_Theory.full_name lthy (Binding.name (name ^ "_ok"));
+    val _ = full_name = Long_Name.qualify module (name ^ "_ok") orelse
+      error ("python_check " ^ quote name ^ ": not at theory level (would define " ^
+        quote full_name ^ ")");
     val T = fastype_of t;
     val _ = Sign.of_sort thy (T, \<^sort>\<open>equal\<close>) orelse
       error ("python_check " ^ quote name ^ ": type has no equality: " ^
         Syntax.string_of_typ lthy T);
     val r = Code_Evaluation.dynamic_value_strict lthy t;
-    val check = {name = name, module = Context.theory_base_name thy,
+    val check = {name = name, module = module,
       term = string_of_term lthy t, expected = string_of_term lthy r};
   in
     lthy
