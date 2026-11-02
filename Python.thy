@@ -4,6 +4,17 @@ begin
 
 ML_file \<open>code_python.ML\<close>
 
+(* Keywords and builtins of the target Python, which generated names must not hide;
+   make reserved-words writes the file from the Python in .python-version *)
+external_file \<open>etc/python_reserved_words\<close>
+
+setup \<open>fn thy =>
+  File.read_lines (Resources.master_directory thy + \<^path>\<open>etc/python_reserved_words\<close>)
+  |> map trim_line
+  |> filter_out (fn line => line = "" orelse String.isPrefix "#" line)
+  |> (fn names => fold (Code_Target.add_reserved Code_Python.target) names thy)
+\<close>
+
 declare [[default_code_width = 2000]]
 
 code_identifier

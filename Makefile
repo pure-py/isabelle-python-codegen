@@ -32,6 +32,9 @@ test-oracle: build-test-oracle
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py
 
+reserved-words:
+	$(PYTHON) etc/update_reserved_words.py
+
 test-all: test-quick test-slow test-diff test-oracle
 
 test: test-quick
@@ -39,7 +42,7 @@ test: test-quick
 build:
 	$(ISABELLE) build -d . -e Python
 
-.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle build
+.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle build reserved-words
 
 
 

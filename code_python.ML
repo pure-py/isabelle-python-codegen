@@ -68,14 +68,9 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
-val python_reserved_words =
-  ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
-   "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
-   "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
-   "raise", "return", "try", "while", "with", "yield", "match", "case"]
-
-  (* these are symbols we use in addition to the standard reserved words *) 
-  @ ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];;
+(* Names bound by the prelude of every generated module; the keywords and builtins of
+   Python are reserved by Python.thy, from etc/python_reserved_words *)
+val prelude_names = ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -1157,7 +1152,6 @@ val _ = Theory.setup
       run_command = Code_Target.run_command_bash (fn module_name =>
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
-  #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) python_reserved_words) thy));
+  #> fold (Code_Target.add_reserved target) prelude_names);
 
 end; (* struct *)

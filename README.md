@@ -10,6 +10,9 @@ Python 3.
 - [uv](https://docs.astral.sh/uv/), which runs Python at the version in `.python-version`, the target version of
   the generated code
 
+Generated names never hide the keywords and builtins listed in `etc/python_reserved_words`. After changing
+`.python-version`, regenerate that list with `make reserved-words`.
+
 ## Installing as a component
 
 ```bash
