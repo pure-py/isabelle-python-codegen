@@ -100,8 +100,21 @@ closure created in one iteration would see the next iteration's rebinding.
 
 The option `python_type_annotations` (off by default) is the start of type
 annotations in the generated code, in the PEP 695 syntax of Python 3.12. It is
-work in progress: so far it only adds `from __future__ import annotations` and
-a typed `_abort` to each module. Set it like `python_tail_calls`:
+work in progress: so far it covers datatypes. Each constructor becomes a
+generic dataclass with typed fields, over the type parameters these fields use,
+and the datatype becomes the union of its constructors:
+
+```python
+@dataclass(frozen=True)
+class None_:
+    pass
+@dataclass(frozen=True)
+class Some[A]:
+    a: A
+type option[A] = None_ | Some[A]
+```
+
+Functions are not annotated yet. Set the option like `python_tail_calls`:
 
 ```bash
 isabelle build -o python_type_annotations -d . -e Python_Examples

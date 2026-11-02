@@ -224,6 +224,8 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
 
     (* extract the theory from the context *)
     val thy = Proof_Context.theory_of ctxt
+
+    val annotate = Config.get ctxt type_annotations
     
     (* Python introduced structural pattern matching in version 3.10. 
      * We can therefore use things like capture patterns, wildcards, and
@@ -677,9 +679,21 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           | _ => stock fxy ts
         end
 
-    fun print_python_typedef tyco { cnstrs, ... } =
+    (* With type annotations, a constructor is a generic dataclass over the type
+       parameters its fields use, and the datatype is the union of its constructors:
+         class Some[A]: a: A
+         type option[A] = None_ | Some[A]
+       A constructor without a parameter its datatype has (None_) then fits every
+       instance of the datatype (option[int]) *)
+    fun print_python_typedef tyco { typarams, cnstrs } =
       let
-        val field_names = 
+        val tyvars = intro_tyvars typarams
+        fun add_tyvars (ITyVar v) = insert (op =) v
+          | add_tyvars (_ `%% tys) = fold add_tyvars tys
+        fun used_typarams arg_tys = filter (member (op =) (fold add_tyvars arg_tys [])) typarams
+        fun print_generic name vs =
+          print_typ_app (Pretty.str name) (map (Pretty.str o lookup_var tyvars) vs)
+        val field_names =
           case Record.get_info thy (Long_Name.qualifier tyco) of
               SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
             | NONE => NONE
@@ -700,14 +714,22 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                         | n => "more" :: List.tabulate (n - 1, fn i => "more" ^ string_of_int (i + 2)))
                     else map fst named_fields
                 | NONE => map fst named_fields
-            val fields = labels
-              |> map (fn fname => Pretty.str (python_safe_ident fname ^ ": Any"))
+            val fields = labels ~~ arg_tys
+              |> map (fn (fname, ty) => Pretty.block [Pretty.str (python_safe_ident fname ^ ": "),
+                   if annotate then print_typ tyvars ty else Pretty.str "Any"])
+            val class_head = if annotate
+              then print_generic (deresolve_const name) (used_typarams arg_tys)
+              else Pretty.str (deresolve_const name)
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
-             Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
+             Pretty.block [Pretty.str "class ", class_head, Pretty.str ":"],
              indent_block 4 (if null fields then Pretty.str "pass" else Pretty.chunks fields)]
           end
-      in Pretty.chunks (map print_constructor cnstrs) end;
+        val alias = Pretty.block [Pretty.str "type ",
+          print_generic (deresolve (Type_Constructor tyco)) typarams, Pretty.str " = ",
+          Pretty.block (separate (Pretty.str " | ") (map (fn { name, arg_tys, ... } =>
+            print_generic (deresolve_const name) (used_typarams arg_tys)) cnstrs))]
+      in Pretty.chunks (map print_constructor cnstrs @ (if annotate then [alias] else [])) end;
 
     fun print_python_class sym { super, methods } =
       let
@@ -969,15 +991,18 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* Add trailing underscores to a name until it is unused and not a module name, following PEP 8 *)
-    fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
+    (* Add trailing underscores to a name until it is not reserved, unused and not a module name,
+       following PEP 8. The names in use are kept apart from the Name.context of reserved names:
+       Name.declare drops a trailing underscore, so after declaring `set_` the name `set_` would
+       still count as free, and a datatype and its constructor could both become `set_`. *)
+    fun namify_common module_names base (reserved, used) =
       let
         fun fresh x =
-          if Name.is_declared nsp_common x orelse member (op =) module_names x then fresh (x ^ "_") else x;
+          if Name.is_declared reserved x orelse Symtab.defined used x
+            orelse member (op =) module_names x
+          then fresh (x ^ "_") else x;
         val base' = fresh base;
-      in
-        (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), Name.declare base' nsp_common))
-      end;
+      in (base', (reserved, Symtab.insert_set base' used)) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
@@ -997,7 +1022,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
     fun flat_program module_names =
       Code_Namespace.flat_program ctxt
         { module_prefix = "", module_name = module_name, reserved = reserved,
-          identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+          identifiers = identifiers, empty_nsp = (reserved, Symtab.empty),
           namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
         exports program;
 
