@@ -10,9 +10,6 @@ Python 3.
 - [uv](https://docs.astral.sh/uv/), which runs Python at the version in `.python-version`, the target version of
   the generated code
 
-Generated names never hide the keywords and builtins listed in `etc/python_reserved_words`. After changing
-`.python-version`, regenerate that list with `make reserved-words`.
-
 ## Installing as a component
 
 ```bash
@@ -44,6 +41,35 @@ things.
 `Python.Python_Setup` extends `Python.Python` by printing `int` and `nat` as
 Python integers, lists as Python lists, pairs as tuples and `char` as
 one-character strings.
+
+### Reserved names
+
+Generated code must not use Python's keywords as names, nor hide the builtins
+it calls itself (`len`, `list`, `range`, ...). The names to avoid are listed one
+per line in `etc/python_reserved_words`: the keywords, soft keywords and
+builtins of the Python version in `.python-version`. Lines starting with `#`
+are comments. `Python.thy` reserves every name in the file, together with the
+names that the prelude of each generated module binds (`dataclass`, `Any`,
+`Callable`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
+`code_python.ML`).
+
+A definition, class or datatype with a reserved name gets a trailing
+underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
+(`len` becomes `lena`).
+
+The list is generated rather than edited by hand. After changing
+`.python-version`, regenerate it with
+
+```bash
+make reserved-words
+```
+
+which runs `etc/update_reserved_words.py` with the project's Python through
+`uv run`. The script refuses to run under any other Python version than the
+one in `.python-version`. Commit the updated list with the version change.
+`Python.thy` declares the file with `external_file`, so the next
+`isabelle build` rebuilds the `Python` session, and every session built on it,
+whenever the list changes.
 
 ### Tail calls as loops
 
