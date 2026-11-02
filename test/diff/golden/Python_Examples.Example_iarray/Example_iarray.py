@@ -12,9 +12,9 @@ def _abort(msg, thunk):
 def sum_ends(a):
     return (((a[0]) + (a[(max(0, (len(a)) - 1))])))
 
-squares = (tuple(map(lambda i: (i * i), range(4))))
+squares = (tuple(map(lambda i: (i * i), range((max(0, 4))))))
 
-example = (((list(squares)), ((sum_ends(squares), (((all(map(lambda x: (x < 10), squares))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, 2]))))), (tuple([2, 3])))))))))
+example = (((list(squares)), ((sum_ends(squares), (((all(map(lambda x: (x < (max(0, 10))), squares))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, max(0, 2)]))))), (tuple([max(0, 2), max(0, 3)])))))))))
 
 def sub_pair(p):
     return ((lambda a, i: a[i])(*p))

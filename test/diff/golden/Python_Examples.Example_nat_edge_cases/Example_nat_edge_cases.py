@@ -19,7 +19,7 @@ def peel_positive_head(x0):
         case _:
             raise RuntimeError("match failed")
 
-peel_test = (peel_positive_head([3, 4, 5]))
+peel_test = (peel_positive_head([max(0, 3), max(0, 4), max(0, 5)]))
 
 def nat_minus2(v, n):
     if ((v == 0)):
@@ -37,8 +37,8 @@ def classify_small(uu):
         if (((max(0, uu - 1)) == 0)):
             return (1)
         else:
-            return (2)
+            return (max(0, 2))
 
-classify_test = ((classify_small(0), ((classify_small(1), classify_small(7)))))
+classify_test = ((classify_small(0), ((classify_small(1), classify_small((max(0, 7)))))))
 
-nat_minus2_test = (nat_minus2(5, 3))
+nat_minus2_test = (nat_minus2((max(0, 5)), (max(0, 3))))

@@ -42,6 +42,35 @@ things.
 Python integers, lists as Python lists, pairs as tuples and `char` as
 one-character strings.
 
+### Reserved names
+
+Generated code must not use Python's keywords as names, nor hide the builtins
+it calls itself (`len`, `list`, `range`, ...). The names to avoid are listed one
+per line in `etc/python_reserved_words`: the keywords, soft keywords and
+builtins of the Python version in `.python-version`. Lines starting with `#`
+are comments. `Python.thy` reserves every name in the file, together with the
+names that the prelude of each generated module binds (`dataclass`, `Any`,
+`Callable`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
+`code_python.ML`).
+
+A definition, class or datatype with a reserved name gets a trailing
+underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
+(`len` becomes `lena`).
+
+The list is generated rather than edited by hand. After changing
+`.python-version`, regenerate it with
+
+```bash
+make reserved-words
+```
+
+which runs `etc/update_reserved_words.py` with the project's Python through
+`uv run`. The script refuses to run under any other Python version than the
+one in `.python-version`. Commit the updated list with the version change.
+`Python.thy` declares the file with `external_file`, so the next
+`isabelle build` rebuilds the `Python` session, and every session built on it,
+whenever the list changes.
+
 ### Tail calls as loops
 
 Python does not eliminate tail calls, so a function that recurses once per

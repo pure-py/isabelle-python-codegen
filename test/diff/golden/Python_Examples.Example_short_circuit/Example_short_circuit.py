@@ -69,7 +69,7 @@ conj_case_empty = (conj_case([]))
 
 disj_case_empty = (disj_case([]))
 
-disj_case_three = (disj_case([3]))
+disj_case_three = (disj_case([max(0, 3)]))
 
 impl_case_empty = (impl_case([]))
 

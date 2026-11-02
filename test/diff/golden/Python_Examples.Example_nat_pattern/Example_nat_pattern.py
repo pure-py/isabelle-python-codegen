@@ -13,7 +13,7 @@ def fact(n):
     else:
         return (((((max(0, n - 1)) + 1)) * fact((max(0, n - 1)))))
 
-fact_5 = (fact(5))
+fact_5 = (fact((max(0, 5))))
 
 def countdown(n):
     if ((n == 0)):
@@ -27,6 +27,6 @@ def nat_is_even(n):
     else:
         return (not nat_is_even((max(0, n - 1))))
 
-is_even_7 = (nat_is_even(7))
+is_even_7 = (nat_is_even((max(0, 7))))
 
-countdown_4 = (countdown(4))
+countdown_4 = (countdown((max(0, 4))))

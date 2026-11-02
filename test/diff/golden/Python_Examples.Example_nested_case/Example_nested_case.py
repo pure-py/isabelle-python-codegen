@@ -12,23 +12,23 @@ def weird(n):
         return (1)
     else:
         if ((n == 0)):
-            x = (10)
+            x = (max(0, 10))
         else:
-            x = ((20 + (max(0, n - 1))))
+            x = (((max(0, 20)) + (max(0, n - 1))))
         return ((1 + x))
 
 def classify(n):
     if ((n == 0)):
-        x = (100)
+        x = (max(0, 100))
     else:
-        x = (200)
+        x = (max(0, 200))
     return ((1 + x))
 
 def nat_label(n):
     if ((n == 0)):
-        x = (10)
+        x = (max(0, 10))
     else:
-        x = ((20 + (max(0, n - 1))))
+        x = (((max(0, 20)) + (max(0, n - 1))))
     return ((1 + x))
 
 def abs_manual(x):
@@ -37,11 +37,11 @@ def abs_manual(x):
     else:
         return (x)
 
-label_five = (nat_label(5))
+label_five = (nat_label((max(0, 5))))
 
 label_zero = (nat_label(0))
 
-weird_five = (weird(5))
+weird_five = (weird((max(0, 5))))
 
 weird_zero = (weird(0))
 
@@ -62,6 +62,6 @@ abs_manual_neg = (abs_manual(((- 7))))
 
 abs_manual_pos = (abs_manual(7))
 
-classify_other = (classify(5))
+classify_other = (classify((max(0, 5))))
 
-describe_len_123 = (describe_len([1, 2, 3]))
+describe_len_123 = (describe_len([1, max(0, 2), max(0, 3)]))

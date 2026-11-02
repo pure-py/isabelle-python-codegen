@@ -68,18 +68,9 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
-(* Names bound by the prelude of every generated module: its imports and the abort function *)
-val prelude_names = ["dataclass", "Any", "Callable", "functools", "_abort"];
-
-(* Keywords and builtins of the target Python, except the wildcard _ printed by the generator; generated names
-   must not hide these. *)
-fun python_names thy =
-  let
-    val version = trim_line (File.read (Resources.master_directory thy + Path.basic ".python-version"));
-    val (out, rc) = Isabelle_System.bash_output ("uv run -q --no-project --python " ^ Bash.string version ^
-      " python -c 'import builtins, keyword; " ^
-      "print(*keyword.kwlist, *(k for k in keyword.softkwlist if k != \"_\"), *dir(builtins))'");
-  in if rc = 0 then space_explode " " (trim_line out) else error ("No names of Python " ^ version) end;
+(* Names bound by the prelude of every generated module; the keywords and builtins of
+   Python are reserved by Python.thy, from etc/python_reserved_words *)
+val prelude_names = ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -1161,7 +1152,6 @@ val _ = Theory.setup
       run_command = Code_Target.run_command_bash (fn module_name =>
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
-  #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) (python_names thy @ prelude_names)) thy));
+  #> fold (Code_Target.add_reserved target) prelude_names);
 
 end; (* struct *)
