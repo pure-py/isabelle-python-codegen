@@ -7,27 +7,27 @@ import Num
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-nat_sum = ((6 + 7))
+nat_sum = (((max(0, 6)) + (max(0, 7))))
 
-nat_eq_test = ((4 == 4))
+nat_eq_test = (((max(0, 4)) == (max(0, 4))))
 
-nat_le_test = ((3 <= 5))
+nat_le_test = (((max(0, 3)) <= (max(0, 5))))
 
-nat_literal = (42)
+nat_literal = (max(0, 42))
 
-nat_lt_test = ((5 < 3))
+nat_lt_test = (((max(0, 5)) < (max(0, 3))))
 
-nat_product = ((6 * 7))
+nat_product = (((max(0, 6)) * (max(0, 7))))
 
-nat_sub_pos = (max(0, 10 - 3))
+nat_sub_pos = (max(0, (max(0, 10)) - (max(0, 3))))
 
 def nat_checksum(x, y):
     return ((((lambda a, b: a % b if b else a)(((x * y)), ((y + 1)))) + (max(0, x - y))))
 
-nat_quotient = ((lambda a, b: a // b if b else 0)(7, 2))
+nat_quotient = ((lambda a, b: a // b if b else 0)((max(0, 7)), (max(0, 2))))
 
-nat_remainder = ((lambda a, b: a % b if b else a)(7, 2))
+nat_remainder = ((lambda a, b: a % b if b else a)((max(0, 7)), (max(0, 2))))
 
-nat_sub_trunc = (max(0, 3 - 10))
+nat_sub_trunc = (max(0, (max(0, 3)) - (max(0, 10))))
 
 nat_zero_test = (0)

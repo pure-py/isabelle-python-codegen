@@ -17,7 +17,7 @@ def weight(a_dict, x, xa1):
             return (0)
         case (xa, [y, *ys]):
             if (a_dict[1].order_linorder.preorder_order.ord_preorder.less(y, xa)):
-                z = (2)
+                z = (max(0, 2))
             else:
                 if (HOL.eq(a_dict[0], y, xa)):
                     z = (1)

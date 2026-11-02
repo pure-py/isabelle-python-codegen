@@ -8,29 +8,29 @@ def _abort(msg, thunk):
     raise RuntimeError(msg)
 
 def grade_code(score):
-    if ((score < 60)):
+    if ((score < (max(0, 60)))):
         return (0)
     else:
-        if ((score < 70)):
+        if ((score < (max(0, 70)))):
             return (1)
         else:
-            if ((score < 80)):
-                return (2)
+            if ((score < (max(0, 80)))):
+                return (max(0, 2))
             else:
-                if ((score < 90)):
-                    return (3)
+                if ((score < (max(0, 90)))):
+                    return (max(0, 3))
                 else:
-                    return (4)
+                    return (max(0, 4))
 
-grade_a = (grade_code(95))
+grade_a = (grade_code((max(0, 95))))
 
-grade_b = (grade_code(85))
+grade_b = (grade_code((max(0, 85))))
 
-grade_c = (grade_code(75))
+grade_c = (grade_code((max(0, 75))))
 
-grade_d = (grade_code(65))
+grade_d = (grade_code((max(0, 65))))
 
-grade_f = (grade_code(40))
+grade_f = (grade_code((max(0, 40))))
 
 def nested_then(x, y):
     if ((0 < x)):

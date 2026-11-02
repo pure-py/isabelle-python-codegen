@@ -9,7 +9,7 @@ def _abort(msg, thunk):
 
 empty_list = ([])
 
-magic_number = (42)
+magic_number = (max(0, 42))
 
 uses_empty_list = (empty_list)
 
