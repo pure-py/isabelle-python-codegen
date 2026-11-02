@@ -156,6 +156,7 @@ code_printing
   | constant List.nth \<rightharpoonup> (Python) "_[_]"
   | constant List.map \<rightharpoonup> (Python) "list(map((_), (_)))"
   | constant List.append \<rightharpoonup> (Python) "(_ + _)"
+  | constant List.upt \<rightharpoonup> (Python) "list(range((_), (_)))"
 
 setup \<open>
   let
