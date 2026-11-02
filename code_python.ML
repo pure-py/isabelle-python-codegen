@@ -69,7 +69,7 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
 val python_reserved_words =
-  ["False", "None", "True", "and", "as", "assert", "async","await", "break", "class",
+  ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
    "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
    "raise", "return", "try", "while", "with", "yield", "match", "case"]
@@ -1158,6 +1158,6 @@ val _ = Theory.setup
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
   #> (fn thy => fold (Code_Target.add_reserved target)
-    (distinct (op =) (python_names thy @ prelude_names)) thy));
+    (distinct (op =) python_reserved_words) thy));
 
 end; (* struct *)
