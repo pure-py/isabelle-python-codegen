@@ -62,15 +62,41 @@ fun ok_term t r =
   else if r aconv \<^term>\<open>False\<close> then HOLogic.mk_not t
   else HOLogic.mk_eq (t, r);
 
+(*with Code_Abstract_Char, SML gives a character as Chr k, which a code equation
+  must not use; the literal is what the term would be written as anyway*)
+fun char_literals (Const ("Code_Abstract_Char.Chr", _) $ k) =
+      HOLogic.mk_char (case k of
+        Const ("Code_Numeral.Pos", _) $ n => HOLogic.dest_numeral n
+      | _ => snd (HOLogic.dest_number k))
+  | char_literals (t $ u) = char_literals t $ char_literals u
+  | char_literals (Abs (x, T, t)) = Abs (x, T, char_literals t)
+  | char_literals t = t;
+
 fun check name t lthy =
   let
     val thy = Proof_Context.theory_of lthy;
+    val module = Context.theory_base_name thy;
+    (*in a locale or class the constants would be named after it and take its
+      parameters, so neither const_names nor the runner's name_ok(None) would find them*)
+    val full_name = Local_Theory.full_name lthy (Binding.name (name ^ "_ok"));
+    val _ = full_name = Long_Name.qualify module (name ^ "_ok") orelse
+      error ("python_check " ^ quote name ^ ": not at theory level (would define " ^
+        quote full_name ^ ")");
+    val frees = Term.add_free_names t [];
+    val _ = null frees orelse
+      error ("python_check " ^ quote name ^ ": free variables " ^ commas_quote (rev frees));
+    (*the constants would take an extra 'a itself argument, so name_ok(None) would
+      not compute the check*)
+    val tvars = Term.add_tfree_names t [] @ map (fst o fst) (Term.add_tvars t []);
+    val _ = null tvars orelse
+      error ("python_check " ^ quote name ^ ": type variables " ^ commas (rev tvars) ^
+        ", add type annotations");
     val T = fastype_of t;
     val _ = Sign.of_sort thy (T, \<^sort>\<open>equal\<close>) orelse
       error ("python_check " ^ quote name ^ ": type has no equality: " ^
         Syntax.string_of_typ lthy T);
-    val r = Code_Evaluation.dynamic_value_strict lthy t;
-    val check = {name = name, module = Context.theory_base_name thy,
+    val r = char_literals (Code_Evaluation.dynamic_value_strict lthy t);
+    val check = {name = name, module = module,
       term = string_of_term lthy t, expected = string_of_term lthy r};
   in
     lthy
@@ -79,11 +105,25 @@ fun check name t lthy =
     |> Local_Theory.background_theory (Data.map (cons check))
   end;
 
+(*a list literal as written, so that its elements print as given, and any
+  other list, such as [0..<5], by its value*)
+fun dest_arg_list lthy xs =
+  (case try HOLogic.dest_list xs of
+    SOME ys => ys
+  | NONE => HOLogic.dest_list (Code_Evaluation.dynamic_value_strict lthy xs));
+
 fun check_grid name f xss lthy =
   let
     fun combos [] = [[]]
       | combos (xs :: xss) = maps (fn x => map (cons x) (combos xss)) xs;
-    val cases = combos (map HOLogic.dest_list xss);
+    val argss = map (dest_arg_list lthy) xss;
+    val empty = map_filter (fn (i, xs) => if null xs then SOME (string_of_int (i + 1)) else NONE)
+      (map_index I argss);
+    val _ =
+      if null empty then ()
+      else warning ("python_check_grid " ^ quote name ^ ": no checks, empty argument " ^
+        (if length empty = 1 then "list " else "lists ") ^ commas empty);
+    val cases = combos argss;
   in
     fold_index (fn (i, xs) =>
       check (name ^ "_" ^ string_of_int i) (Envir.beta_norm (list_comb (f, xs)))) cases lthy
@@ -105,7 +145,10 @@ fun json_string s =
     fun esc #"\"" = "\\\""
       | esc #"\\" = "\\\\"
       | esc #"\n" = "\\n"
-      | esc c = if Char.ord c < 32 then "" else String.str c;
+      | esc c =
+          if Char.ord c < 32
+          then "\\u" ^ StringCvt.padLeft #"0" 4 (Int.fmt StringCvt.HEX (Char.ord c))
+          else String.str c;
   in quote (String.translate esc s) end;
 
 fun json_of_check ({name, module, term, expected}: check) =

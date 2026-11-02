@@ -1,5 +1,6 @@
 theory Python_Setup
     imports Python "HOL-Library.Code_Target_Int" "HOL-Library.Code_Target_Nat"
+      "HOL-Library.Code_Abstract_Char"
 begin
 
 code_identifier
@@ -122,8 +123,28 @@ setup \<open>
 \<close>
 
 
-(* Python builtins used by the printings in this theory; generated names must not shadow them *)
-code_reserved (Python) len list map max min abs divmod
+(* Characters, as one-character strings *)
+code_printing
+    type_constructor char \<rightharpoonup> (Python) "str"
+  | constant Code_Abstract_Char.Chr \<rightharpoonup> (Python) "chr'(_')"
+  | constant String.integer_of_char \<rightharpoonup> (Python) "ord'(_')"
+  | constant "HOL.equal :: char \<Rightarrow> char \<Rightarrow> bool" \<rightharpoonup> (Python) infix 4 "=="
+  | constant "(\<le>) :: char \<Rightarrow> char \<Rightarrow> bool" \<rightharpoonup> (Python) infixl 35 "<="
+  | constant "(<) :: char \<Rightarrow> char \<Rightarrow> bool" \<rightharpoonup> (Python) infixl 35 "<"
+  | constant String.explode \<rightharpoonup> (Python) "list'(_')"
+  | constant String.implode \<rightharpoonup> (Python) "\"\".join'(_')"
+
+(* Each character constant of Code_Abstract_Char as a string literal *)
+setup \<open>
+  let
+    fun literal n =
+      if 32 <= n andalso n < 127 then Code_Python.print_python_string (String.str (Char.chr n))
+      else quote ("\\x" ^ align_right "0" 2 (Int.fmt StringCvt.HEX n));
+    fun printing n = Code_Target.set_printings (Code_Symbol.Constant
+      ("Code_Abstract_Char.Char_" ^ String_Syntax.hex n,
+       [("Python", SOME (Code_Printer.plain_const_syntax (literal n)))]));
+  in fold printing (0 upto 255) end
+\<close>
 
 (* Lists *)
 code_printing

@@ -40,6 +40,18 @@ else:
     import Quick_Test as m
 
 
+# ---- Code.abort ----
+
+
+def test_abort_in_expression():
+    assert m.a_checked(3) == 3
+    assert m.a_nested(3) == 4
+    with pytest.raises(RuntimeError, match="negative"):
+        m.a_checked(-1)
+    with pytest.raises(RuntimeError, match="negative"):
+        m.a_nested(-1)
+
+
 # ---- tuples ----
 
 def test_tuple_values():
@@ -180,6 +192,12 @@ def test_map_native_list():
     # registration for List.map (Python_Setup.thy); without it this
     # silently fails to compile map's definition at all
     assert m.p_mapped == [2, 3, 4]
+
+
+def test_bare_binary_constant_as_function_value():
+    # foldr add2 [1, 2, 3] 0 -- add2 passed bare must be curried, since foldr
+    # applies it one argument at a time
+    assert m.p_folded == 6
 
 
 # ---- code numerals ----

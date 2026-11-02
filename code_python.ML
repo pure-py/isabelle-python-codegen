@@ -4,6 +4,7 @@ sig
   val add_transparent_wrapper_sym: string -> theory -> theory
   val add_undefined_sym: string -> theory -> theory
   val enable_native_encoding: string -> theory -> theory
+  val print_python_string: string -> string
   val tail_calls: bool Config.T
 end;
 
@@ -68,13 +69,13 @@ fun enable_native_encoding name = Native_Encoding_Data.map (Symtab.update (name,
 fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy) name;
 
 val python_reserved_words =
-  ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+  ["False", "None", "True", "and", "as", "assert", "async","await", "break", "class",
    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
    "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
    "raise", "return", "try", "while", "with", "yield", "match", "case"]
 
   (* these are symbols we use in addition to the standard reserved words *) 
-  @ ["dataclass", "Any", "Callable", "_unimplemented", "functools"];;
+  @ ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];;
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -165,13 +166,12 @@ fun invent_names vars prefix n =
 
 (*
  * arguments:
- *   undefineds: intentionally unimplemented symbols, turn into 
- *                 `raise NotImplementedError(...)`
+ *   undefineds: intentionally unimplemented symbols, turn into `_abort(...)`
  *   const_syntax: custom registered code_printing declarations for constants
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
- *   is_constr: true for any datatype constructor
+ *   is_constr: true for a datatype constructor without a printing
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *)
@@ -186,6 +186,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
        Declaration, construction and projection must all use this, as
        deresolve may rename (`equal` -> `equala`) or module-qualify. *)
     fun attr_name sym = Long_Name.base_name (deresolve sym);
+
+    (* Abort for a constant without code, named by its full name *)
+    fun print_abort const =
+      Pretty.block [Pretty.str "_abort(", Pretty.str (print_python_string const), Pretty.str ", None)"];
 
     (* extract the theory from the context *)
     val thy = Proof_Context.theory_of ctxt
@@ -207,7 +211,13 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     (* A "preamble" entry is a statement that needs to run before the
        expression that depends on it *)
-    datatype python_preamble = PBind of string * iterm | PRaw of Pretty.T;
+    (* A branch of a short-circuiting connective: a term, or a fixed truth value *)
+    datatype python_branch = BTerm of iterm | BBool of bool;
+
+    datatype python_preamble = PBind of string * iterm | PRaw of Pretty.T
+      (* `x = (cond ? then : else)`, printed as an if statement so that only the
+         branch that is taken gets evaluated *)
+      | PIf of string * iterm * python_branch * python_branch;
 
     val fallthrough_arm = Pretty.chunks
       [Pretty.block [Pretty.str "case ", Pretty.str "_", Pretty.str ":"],
@@ -221,8 +231,9 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           in (x :: es, tail) end
       | _ => ([], t);
 
-    (* Allows us to detect constructors that have been pruned by custom printers *)
-    fun safe_is_constr sym = (case try is_constr sym of SOME b => b | NONE => false)
+    (* Arity of a constant, or of its printing if it has one *)
+    fun const_arity (sym as Constant c) = (case const_syntax c of SOME (k, _) => k | NONE => args_num sym)
+      | const_arity _ = raise Fail "should never be reached";
     
     (* Create patterns from iterms *)
     fun pattern_of_iterm vars (IVar NONE) = (PWild, [], [], vars)
@@ -233,7 +244,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           if sym = Constant "List.list.Nil" andalso use_native_encoding 
             thy "list"
           then (PLiteral (Pretty.str "[]"), [], [], vars)
-          else if safe_is_constr sym andalso args_num sym = 0
+          else if is_constr sym andalso args_num sym = 0
           then (PClass (deresolve sym, []), [], [], vars)
           else
             (* fallback, create a new name + attach guards *)
@@ -306,7 +317,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     fun exhaustive (IVar _) = true
       | exhaustive (IConst { sym, ... }) =
-          safe_is_constr sym andalso args_num sym = 0 andalso is_sole_constr sym
+          is_constr sym andalso args_num sym = 0 andalso is_sole_constr sym
       | exhaustive t =
           (case Code_Thingol.unfold_const_app t of
             SOME ({ sym, ... }, args) =>
@@ -354,13 +365,35 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val body = Pretty.chunks (preamble @ [body_pretty vars'])
       in (header, vars', body) end
   
+    (* The connectives are printed as Python's short-circuiting `and`/`or`, so the
+       right operand is only evaluated when the left one does not decide the result.
+       Hoisting statements out of the right operand would evaluate them
+       unconditionally; such a connective is turned into an if statement instead. *)
+    and short_circuit t =
+      case Code_Thingol.unfold_const_app t of
+        SOME ({ sym = Constant c, ... }, [a, b]) =>
+          if is_stmt_free b then NONE
+          else (case c of
+              "HOL.conj" => SOME (a, BTerm b, BBool false)
+            | "HOL.disj" => SOME (a, BBool true, BTerm b)
+            | "HOL.implies" => SOME (a, BTerm b, BBool true)
+            | _ => NONE)
+      | _ => NONE
+
     and anf_term vars (t as IConst _) = ([], vars, t)
       | anf_term vars (t as IVar _) = ([], vars, t)
-      | anf_term vars (t1 `$ t2) =
-          let
-            val (b1, vars1, t1') = anf_term vars t1;
-            val (b2, vars2, t2') = anf_term vars1 t2;
-          in (b1 @ b2, vars2, t1' `$ t2') end
+      | anf_term vars (t as t1 `$ t2) =
+          (case short_circuit t of
+            SOME (cond, t_branch, e_branch) =>
+              let
+                val (bc, vars1, cond') = anf_term vars cond;
+                val (x, vars2) = invent_name vars1 "x";
+              in (bc @ [PIf (x, cond', t_branch, e_branch)], vars2, IVar (SOME x)) end
+          | NONE =>
+              let
+                val (b1, vars1, t1') = anf_term vars t1;
+                val (b2, vars2, t2') = anf_term vars1 t2;
+              in (b1 @ b2, vars2, t1' `$ t2') end)
       | anf_term vars (t as (_, _) `|=> (_, _)) =
           if is_stmt_free t
           then ([], vars, t)
@@ -452,6 +485,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_preamble some_thm vars (PBind (name, t)) = print_binding some_thm vars (name, t)
       | print_preamble _ _ (PRaw p) = p
+      | print_preamble some_thm vars (PIf (name, cond, t_branch, e_branch)) =
+          let
+            fun branch (BTerm t) = print_binding some_thm vars (name, t)
+              | branch (BBool b) =
+                  Pretty.str (name ^ " = (" ^ (if b then "True" else "False") ^ ")")
+          in
+            Pretty.chunks [
+              Pretty.block [Pretty.str "if (",
+                print_python_expr const_syntax some_thm vars NOBR cond, Pretty.str "):"],
+              indent_block 4 (branch t_branch),
+              Pretty.str "else:",
+              indent_block 4 (branch e_branch)]
+          end
 
     and print_case_block some_thm finish vars target clauses =
       let
@@ -546,7 +592,10 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       in
       if length ts < l
       then
-        if null ts andalso forall null dictss
+        (* A unary constant is printed by name, since the corresponding Python function already takes
+           one argument. A constant of higher arity is eta-expanded, since the corresponding Python
+           function is uncurried but function values are applied one argument at a time. *)
+        if null ts andalso forall null dictss andalso l = 1
         then [(Pretty.str o deresolve) sym]
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
@@ -564,16 +613,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         let
           (* constructors take no dictionaries (as in SML), even when the type has sort
              constraints, e.g. the abstype morphism vec_lambda of ('a, 'b::finite) vec *)
-          val dict_pretty = if safe_is_constr sym then []
+          val dict_pretty = if is_constr sym then []
             else map_filter (print_dicts some_thm vars BR) dictss
         in call_with ((Pretty.str o deresolve) sym) dict_pretty end
       end
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
-      if List.exists (fn name => sym = Constant name) undefineds
-      then Pretty.block [Pretty.str "_unimplemented(",
-          Pretty.str (print_python_string (Code_Symbol.default_base sym)), Pretty.str ")"]
-      else
+      case find_first (fn name => sym = Constant name) undefineds of
+        SOME name => print_abort name
+      | NONE =>
         let
           fun stock fxy' ts' =
             gen_print_app (print_app_expr const_syntax) (print_python_expr const_syntax)
@@ -702,17 +750,17 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val dict_params = print_dict_args vs
         val head = print_func_head const vctxt dict_params (map SOME params)
       in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "raise NotImplementedError(",
-          Pretty.str (print_python_string const), Pretty.str ")"])]
+        indent_block 4 (Pretty.block [Pretty.str "return ", print_abort const])]
       end
 
-    (* A pattern-less equation whose rhs is a constant taking instance
-       dictionaries (`f_int = f`) can't be an alias: the dictionaries must be
-       applied. Callers use the arity of the type (see args_num), so eta-expand
-       to an ordinary function: `def f_int(a, aa): return f(dicts, a, aa)` *)
-    fun eta_expand_dict_alias _ n
+    (* A pattern-less equation whose rhs is a constant (`f_int = f`) can't be an
+       alias: callers use the arity of the type (see args_num), whereas a bare
+       constant of higher arity is printed as a curried lambda, and any instance
+       dictionaries must be applied. So eta-expand to an ordinary function:
+       `def f_int(a, aa): return f(dicts, a, aa)` *)
+    fun eta_expand_alias _ n
         (eq as { patterns = [], rhs = IConst (const as { dictss, ... }), thm }) =
-          if n = 0 orelse forall null dictss then eq
+          if n = 0 then eq
           else
             let
               val (vs_tys, body) = Code_Thingol.unfold_abs
@@ -721,7 +769,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       (* The same holds for any pattern-less equation of a function that takes
          dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
          printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
-      | eta_expand_dict_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
+      | eta_expand_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
           if n = 0 orelse not takes_dicts then eq
           else
             let
@@ -729,25 +777,23 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 (Name.make_context (Code_Thingol.add_varnames rhs [])) "x" n
               val vars = map (IVar o SOME) names
             in { patterns = vars, rhs = rhs `$$ vars, thm = thm } end
-      | eta_expand_dict_alias _ _ eq = eq;
+      | eta_expand_alias _ _ eq = eq;
 
-    (* This functions needs to distinguish different cases:
-     *  - functions without any code equations => print `pass`
+    (* This function needs to distinguish different cases:
+     *  - functions without any code equations, which are declared to abort => print a stub that aborts
      *  - value definitions (i.e., nullary functions), should not be printed as
      *      python functions, but as simple assignments
-     *  - simple functions (i.e., functions that only have one equations, and
+     *  - simple functions (i.e., functions that only have one equation, and
      *      where all the argument patterns are simple variables),
      *      these should be printed as standard python functions
      *  - functions that have multiple equations, or where there is a pattern
      *      in the arguments, these have to use match/case
      *)
-    fun print_python_func const (f as { eqs = [], ... }) =
-          let val _ = warning ("function " ^ const ^ " has no code equations")
-          in print_undefined_func_stub const f end
+    fun print_python_func const (f as { eqs = [], ... }) = print_undefined_func_stub const f
       | print_python_func const { vs, ty, eqs = eqs0 } =
         let
           (* same as above, register typevar names to avoid name clashes *)
-          val eqs = map (eta_expand_dict_alias (not (null (print_dict_args vs)))
+          val eqs = map (eta_expand_alias (not (null (print_dict_args vs)))
            (length (fst (Code_Thingol.unfold_fun ty)))) eqs0
           val vctxt = intro_vars (map fst vs) reserved
           (* a `simple` function only has one equations, where all arguments
@@ -795,10 +841,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             | creates_closure (ICase { term, clauses, ... }) =
                 creates_closure term orelse exists (creates_closure o snd) clauses
             | creates_closure t = (case Code_Thingol.unfold_const_app t of
-                SOME ({ sym, dictss, dom, ... }, ts) =>
-                  let val arity = the_default (length dom) (try args_num sym)
+                SOME ({ sym, dictss, ... }, ts) =>
+                  let val arity = const_arity sym
                   in exists creates_closure ts orelse
-                    (length ts < arity andalso not (null ts andalso forall null dictss))
+                    (length ts < arity
+                      andalso not (null ts andalso forall null dictss andalso arity = 1))
                   end
               | NONE => (case t of
                   t1 `$ t2 => creates_closure t1 orelse creates_closure t2
@@ -891,19 +938,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    fun namify_common base ((nsp_class, nsp_object), nsp_common) =
-      let val (base', nsp_common') = Name.variant base nsp_common
-      in (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), nsp_common')) end;
+    (* Add trailing underscores to a name until it is unused and not a module name, following PEP 8 *)
+    fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
+      let
+        fun fresh x =
+          if Name.is_declared nsp_common x orelse member (op =) module_names x then fresh (x ^ "_") else x;
+        val base' = fresh base;
+      in
+        (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), Name.declare base' nsp_common))
+      end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
-    fun namify_stmt (Code_Thingol.Fun _) = namify_common
-      | namify_stmt (Code_Thingol.Datatype _) = namify_common
-      | namify_stmt (Code_Thingol.Datatypecons _) = namify_common
-      | namify_stmt (Code_Thingol.Class _) = namify_common
-      | namify_stmt (Code_Thingol.Classrel _) = namify_common
-      | namify_stmt (Code_Thingol.Classparam _) = namify_common
-      | namify_stmt (Code_Thingol.Classinst _) = namify_common
-      | namify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
+    fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
+      | namify_stmt module_names _ = namify_common module_names;
     
     (* Code_Thingol.stmt -> python_stmt option *)
     fun modify_stmt (Code_Thingol.Fun (_, SOME _)) = NONE
@@ -916,13 +963,16 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
       | modify_stmt (Code_Thingol.Classparam _) = NONE
       | modify_stmt (stmt as Code_Thingol.Classinst _) = SOME stmt
       | modify_stmt (Code_Thingol.NoStmt) = raise Fail "should not be reached";
-  in
-    Code_Namespace.flat_program ctxt
-      { module_prefix = "", module_name = module_name, reserved = reserved,
-        identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
-        namify_stmt = namify_stmt, modify_stmt = modify_stmt }
-      exports program
-  end;
+    fun flat_program module_names =
+      Code_Namespace.flat_program ctxt
+        { module_prefix = "", module_name = module_name, reserved = reserved,
+          identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+          namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
+        exports program;
+
+    (* Find the module names by a first pass *)
+    val module_names = Graph.keys (#flat_program (flat_program []));
+  in flat_program module_names end;
 
 fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
     identifiers, includes, const_syntax, ... } program exports =
@@ -980,6 +1030,9 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         Code_Thingol.Class (_, (_, classparams)) => classparams
       | _ => raise Fail "should never be reached";
     
+    (* Datatype constructor without a printing *)
+    fun is_constr sym = Code_Symbol.Graph.defined program sym andalso Code_Thingol.is_constr program sym;
+
     fun args_num (sym as Constant const) = (case Code_Symbol.Graph.get_node program sym
       of Code_Thingol.Fun (((_, ty), []), _) => (length o fst o Code_Thingol.unfold_fun) ty
         | Code_Thingol.Fun (((_, ty), ((ts, _), _) :: _), _) =>
@@ -1034,7 +1087,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               | (_, SOME (export, stmt)) =>
                   SOME (print_python_stmt undefineds const_syntax
                     (make_vars reserved_syms) args_num is_class_param is_value
-                    (Code_Thingol.is_constr program) ctxt (deresolver mod_name)
+                    is_constr ctxt (deresolver mod_name)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
@@ -1050,6 +1103,25 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           | _ => false)) stmt_gr false
       end;
 
+    (* Full names of the theories in the context, by short name *)
+    val theory_long_names = Symtab.make (map (fn thy => (Context.theory_base_name thy,
+      Context.theory_long_name thy)) (Theory.nodes_of (Proof_Context.theory_of ctxt)));
+
+    (* Full names of the theories defining the symbols of a module *)
+    fun source_theories mod_name =
+      let val (stmt_gr, _) = Graph.get_node python_program mod_name
+      in
+        Code_Symbol.Graph.fold (insert (op =) o Code_Symbol.default_prefix ctxt o fst) stmt_gr []
+        |> map (the o Symtab.lookup theory_long_names)
+        |> sort_strings
+      end;
+
+    fun print_header mod_name =
+      let val thys = source_theories mod_name
+      in Pretty.str ("# Generated by Isabelle from " ^ (if length thys = 1 then "theory " else "theories ") ^
+        commas thys ^ "; do not edit")
+      end;
+
     fun print_one_module (mod_name, imports, stmt_ps) =
       let
         val import_ps = imports
@@ -1059,10 +1131,11 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           :: Pretty.str "from typing import Any, Callable"
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
-        val unimplemented_def = Pretty.chunks
-          [Pretty.str "def _unimplemented(name):",
-           indent_block 4 (Pretty.str "raise NotImplementedError(name)")]
-      in ([mod_name ^ ".py"], Pretty.chunks2 (imports_block :: unimplemented_def :: stmt_ps))
+        val abort_def = Pretty.chunks
+          [Pretty.str "def _abort(msg, thunk):",
+           indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
+      in ([mod_name ^ ".py"],
+        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: stmt_ps))
       end;
 
     val p = map print_one_module module_stmts
@@ -1084,6 +1157,7 @@ val _ = Theory.setup
       run_command = Code_Target.run_command_bash (fn module_name =>
         "python3 -m py_compile " ^ Bash.string module_name ^ "/*.py")},
       evaluation_args = []})
-  #> fold (Code_Target.add_reserved target) python_reserved_words);
+  #> (fn thy => fold (Code_Target.add_reserved target)
+    (distinct (op =) (python_names thy @ prelude_names)) thy));
 
 end; (* struct *)
