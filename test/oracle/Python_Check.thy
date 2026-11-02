@@ -106,7 +106,14 @@ fun check_grid name f xss lthy =
   let
     fun combos [] = [[]]
       | combos (xs :: xss) = maps (fn x => map (cons x) (combos xss)) xs;
-    val cases = combos (map (dest_arg_list lthy) xss);
+    val argss = map (dest_arg_list lthy) xss;
+    val empty = map_filter (fn (i, xs) => if null xs then SOME (string_of_int (i + 1)) else NONE)
+      (map_index I argss);
+    val _ =
+      if null empty then ()
+      else warning ("python_check_grid " ^ quote name ^ ": no checks, empty argument " ^
+        (if length empty = 1 then "list " else "lists ") ^ commas empty);
+    val cases = combos argss;
   in
     fold_index (fn (i, xs) =>
       check (name ^ "_" ^ string_of_int i) (Envir.beta_norm (list_comb (f, xs)))) cases lthy
