@@ -79,11 +79,18 @@ fun check name t lthy =
     |> Local_Theory.background_theory (Data.map (cons check))
   end;
 
+(*a list literal as written, so that its elements print as given, and any
+  other list, such as [0..<5], by its value*)
+fun dest_arg_list lthy xs =
+  (case try HOLogic.dest_list xs of
+    SOME ys => ys
+  | NONE => HOLogic.dest_list (Code_Evaluation.dynamic_value_strict lthy xs));
+
 fun check_grid name f xss lthy =
   let
     fun combos [] = [[]]
       | combos (xs :: xss) = maps (fn x => map (cons x) (combos xss)) xs;
-    val cases = combos (map HOLogic.dest_list xss);
+    val cases = combos (map (dest_arg_list lthy) xss);
   in
     fold_index (fn (i, xs) =>
       check (name ^ "_" ^ string_of_int i) (Envir.beta_norm (list_comb (f, xs)))) cases lthy

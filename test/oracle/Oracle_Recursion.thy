@@ -49,7 +49,7 @@ fun build :: "nat \<Rightarrow> nat list \<Rightarrow> nat list" where
 | "build (Suc n) acc = build n (n # acc)"
 
 python_check_grid tc_build: "\<lambda>n. build n []" over "[0, 1, 3]"
-python_check_grid tc_swap: "swap_count" over "[0, 1, 2, 3]" "[10]" "[3]"
+python_check_grid tc_swap: "swap_count" over "[0..<4]" "[10]" "[3]"
 python_check_grid tc_rot: "rot3" over "[0, 1, 2, 4]" "[1]" "[2]" "[3]"
 python_check_grid tc_dep: "dep_update" over "[0, 1, 2, 5]" "[3]" "[1]"
 python_check tc_rev: "acc_rev [1::int, 2, 3] []"

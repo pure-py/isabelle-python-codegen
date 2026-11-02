@@ -59,7 +59,7 @@ python_check_grid int_sgn: "\<lambda>x. sgn (x::int)" over "[-3, 0, 3]"
 python_check_grid int_abs: "\<lambda>x. \<bar>x::int\<bar>" over "[-3, 0, 3]"
 python_check_grid integer_abs: "\<lambda>x. \<bar>x::integer\<bar>" over "[-3, 0, 3]"
 python_check_grid int_minmax: "\<lambda>x y. (min x y, max (x::int) y)" over "[-1, 2]" "[-1, 2]"
-python_check_grid int_cmp: "\<lambda>x y. ((x::int) \<le> y, x < y, x = y)" over "[-1, 0, 1]" "[-1, 0, 1]"
+python_check_grid int_cmp: "\<lambda>x y. ((x::int) \<le> y, x < y, x = y)" over "[-1..1]" "[-1..1]"
 python_check_grid int_even: "\<lambda>x. (even (x::int), odd x)" over "[-3, -2, 0, 7]"
 python_check minus_assoc: "(5::int) - (3 - 1) - - 2"
 
