@@ -12,8 +12,6 @@ text \<open>
   depend on HOL-Library.IArray.
 \<close>
 
-code_reserved (Python) tuple range all any
-
 code_printing
     type_constructor iarray \<rightharpoonup> (Python) "_ tuple"
   | constant IArray \<rightharpoonup> (Python) "tuple'(_')"
