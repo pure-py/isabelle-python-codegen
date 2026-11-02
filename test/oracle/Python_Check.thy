@@ -62,6 +62,16 @@ fun ok_term t r =
   else if r aconv \<^term>\<open>False\<close> then HOLogic.mk_not t
   else HOLogic.mk_eq (t, r);
 
+(*with Code_Abstract_Char, SML gives a character as Chr k, which a code equation
+  must not use; the literal is what the term would be written as anyway*)
+fun char_literals (Const ("Code_Abstract_Char.Chr", _) $ k) =
+      HOLogic.mk_char (case k of
+        Const ("Code_Numeral.Pos", _) $ n => HOLogic.dest_numeral n
+      | _ => snd (HOLogic.dest_number k))
+  | char_literals (t $ u) = char_literals t $ char_literals u
+  | char_literals (Abs (x, T, t)) = Abs (x, T, char_literals t)
+  | char_literals t = t;
+
 fun check name t lthy =
   let
     val thy = Proof_Context.theory_of lthy;
@@ -85,7 +95,7 @@ fun check name t lthy =
     val _ = Sign.of_sort thy (T, \<^sort>\<open>equal\<close>) orelse
       error ("python_check " ^ quote name ^ ": type has no equality: " ^
         Syntax.string_of_typ lthy T);
-    val r = Code_Evaluation.dynamic_value_strict lthy t;
+    val r = char_literals (Code_Evaluation.dynamic_value_strict lthy t);
     val check = {name = name, module = module,
       term = string_of_term lthy t, expected = string_of_term lthy r};
   in
