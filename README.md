@@ -100,8 +100,8 @@ closure created in one iteration would see the next iteration's rebinding.
 
 The option `python_type_annotations` (off by default) is the start of type
 annotations in the generated code, in the PEP 695 syntax of Python 3.12. It is
-work in progress: so far it covers datatypes, and functions and values without
-sort constraints. Each constructor becomes a generic dataclass with typed
+work in progress: it covers datatypes, functions, values and type classes, but
+not yet local definitions such as hoisted lambdas. Each constructor becomes a generic dataclass with typed
 fields, over the type parameters these fields use, and the datatype becomes the
 union of its constructors:
 
@@ -129,8 +129,23 @@ add_one: Callable[[int], int] = (lambda a: add2(1, a))
 A value is annotated too, unless its type has type variables
 (`empty_list = []`): a module-level assignment cannot declare type parameters.
 
-Type classes, and functions with sort constraints, are not annotated yet. Set
-the option like `python_tail_calls`:
+A type class becomes a generic dataclass over its type variable. Methods are
+called with all their arguments at once, so their fields have uncurried types.
+An instance returns the class at its type, and a function with a sort
+constraint takes a dictionary of that class (a tuple of dictionaries, for a
+sort with several classes):
+
+```python
+@dataclass(frozen=True)
+class ord_[A]:
+    less_eq: Callable[[A, A], bool]
+    less: Callable[[A, A], bool]
+
+def ord_list[A](a_dict: ord_[A]) -> ord_[list[A]]: ...
+def announce[A](a_dict: describable[A], x: A) -> str: ...
+```
+
+Set the option like `python_tail_calls`:
 
 ```bash
 isabelle build -o python_type_annotations -d . -e Python_Examples

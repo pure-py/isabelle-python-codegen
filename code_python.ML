@@ -116,6 +116,7 @@ datatype python_stmt =
     (* A typeclass definition (turns into a `@dataclass with one Callable
        field per method, and one field per direct superclass) *)
   | Class of { 
+      var: vname,                     (* the type variable of the class *)
       super: (class * class) list,    (* super classes *)
       methods: (string * itype) list  (* class methods *)
     }
@@ -731,22 +732,52 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             print_generic (deresolve_const name) (used_typarams arg_tys)) cnstrs))]
       in Pretty.chunks (map print_constructor cnstrs @ (if annotate then [alias] else [])) end;
 
-    fun print_python_class sym { super, methods } =
+    (* The type of a dictionary of class for the type variable v: cls[V] *)
+    fun print_dict_typ tyvars class v =
+      print_typ_app (Pretty.str (deresolve_class class)) [Pretty.str (lookup_var tyvars v)]
+
+    (* A method is called with all its arguments at once (see print_app_expr), so its
+       field has an uncurried type: a => a => bool is Callable[[A, A], bool] *)
+    fun print_method_typ tyvars ty =
+      let val (tys, ran) = Code_Thingol.unfold_fun ty
+      in Pretty.block [Pretty.str "Callable[", Pretty.enum "," "[" "]" (map (print_typ tyvars) tys),
+        Pretty.str ", ", print_typ tyvars ran, Pretty.str "]"]
+      end
+
+    (* With type annotations, a class is a generic dataclass over its type variable,
+       with a field of type super[A] per direct superclass *)
+    fun print_python_class sym { var, super, methods } =
       let
+        val tyvars = intro_tyvars [var]
         val fields = methods
-          |> map (fn (name, _) => Pretty.str (attr_name (Constant name) ^ ": Callable"))
+          |> map (fn (name, ty) => Pretty.block [Pretty.str (attr_name (Constant name) ^ ": "),
+               if annotate then print_method_typ tyvars ty else Pretty.str "Callable"])
         val super_fields = super
-          |> map (fn (self, super) => Pretty.str
-            (attr_name (Class_Relation (self, super)) ^ ": Any"))
+          |> map (fn (self, super) => Pretty.block
+            [Pretty.str (attr_name (Class_Relation (self, super)) ^ ": "),
+             if annotate then print_dict_typ tyvars super var else Pretty.str "Any"])
         val all_fields = super_fields @ fields
+        val class_head = if annotate
+          then print_typ_app (Pretty.str (deresolve_class sym)) [Pretty.str (lookup_var tyvars var)]
+          else Pretty.str (deresolve_class sym)
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
-        Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
+        Pretty.block [Pretty.str "class ", class_head, Pretty.str ":"],
         indent_block 4 (if null all_fields then Pretty.str "pass" else Pretty.chunks all_fields)]
       end;
 
     fun print_dict_args vs = map_filter (fn (v, sort) =>
       if null sort then NONE else SOME (Pretty.str (v ^ "_dict"))) vs
+
+    (* The types of the dictionary arguments: cls[V], or a tuple of them if the sort of
+       V has several classes (indexed as v_dict[i], see print_plain_dict) *)
+    fun print_dict_arg_typs tyvars vs = map_filter (fn (_, []) => NONE
+        | (v, [class]) => SOME (print_dict_typ tyvars class v)
+        | (v, sort) => SOME (print_typ_app (Pretty.str "tuple")
+            (map (fn class => print_dict_typ tyvars class v) sort))) vs
+
+    fun annotate_args names typs =
+      map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) names typs
 
     fun print_python_instance (target', class) { vs, tyco, inst_params, superinsts, ... } =
       let
@@ -775,19 +806,30 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
         val dict_args = print_dict_args vs
-        val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
-          Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
+        (* annotated: def ord_list[A](a_dict: ord[A]) -> ord[list_[A]] *)
+        val head = if annotate
+          then
+            let val typ_vars = intro_tyvars (map fst vs)
+            in Pretty.block [Pretty.str "def ",
+              print_typ_app (Pretty.str instance_name) (map (Pretty.str o lookup_var typ_vars o fst) vs),
+              Pretty.enum "," "(" ")" (annotate_args dict_args (print_dict_arg_typs typ_vars vs)),
+              Pretty.str " -> ",
+              print_typ_app class_pretty [print_typ typ_vars (tyco `%% map (ITyVar o fst) vs)],
+              Pretty.str ":"]
+            end
+          else Pretty.block [Pretty.str "def ", Pretty.str instance_name,
+            Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
         (* an instance without dictionary arguments always builds the same
            (frozen) dictionary, so build it once *)
         val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
     (* Annotations of a function of type ty that takes n parameters: its PEP 695 type
-       parameters, the types of the parameters, and the rest of the type as the return type
-       (a function that returns a function value returns it curried, see print_typ). So far
-       not for functions with sort constraints, which take dictionaries. *)
+       parameters, the types of its dictionary arguments and parameters, and the rest of the
+       type as the return type (a function that returns a function value returns it curried,
+       see print_typ) *)
     fun func_signature vs ty n =
-      if not annotate orelse exists (not o null o snd) vs then NONE
+      if not annotate then NONE
       else
         let
           val tyvars = intro_tyvars (map fst vs)
@@ -795,7 +837,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           val (param_tys, rest) = chop n tys
         in
           if length param_tys <> n then NONE
-          else SOME (map (Pretty.str o lookup_var tyvars o fst) vs,
+          else SOME (map (Pretty.str o lookup_var tyvars o fst) vs, print_dict_arg_typs tyvars vs,
             map (print_typ tyvars) param_tys, print_typ tyvars (rest `--> ran))
         end
 
@@ -804,15 +846,15 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val param_prettys = map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
                                         | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
           params
-        val (name, typed_params, ret) = case func_sig of
-            NONE => (Pretty.str (deresolve_const const), param_prettys, [])
-          | SOME (typarams, tys, ran) =>
+        val (name, typed_args, ret) = case func_sig of
+            NONE => (Pretty.str (deresolve_const const), dicts @ param_prettys, [])
+          | SOME (typarams, dict_tys, tys, ran) =>
               (print_typ_app (Pretty.str (deresolve_const const)) typarams,
-               map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) param_prettys tys,
+               annotate_args dicts dict_tys @ annotate_args param_prettys tys,
                [Pretty.str " -> ", ran])
       in
         Pretty.block ([Pretty.str "def ", name,
-          Pretty.enum "," "(" ")" (dicts @ typed_params)] @ ret @ [Pretty.str ":"])
+          Pretty.enum "," "(" ")" typed_args] @ ret @ [Pretty.str ":"])
       end
 
     fun print_undefined_func_stub const { vs, ty, ... } =
@@ -964,7 +1006,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             let
               val { rhs = t, thm = some_thm, ... } = hd eqs
               val target = case func_sig of
-                  SOME ([], _, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
+                  SOME ([], _, _, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
                 | _ => deresolve_const const
             in print_binding some_thm vars2 (target, t) end
           else if simple
@@ -1148,8 +1190,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
             ) cnstrs
           in Datatype { typarams = typarams, cnstrs = constrs' } end
       | python_stmt_of_thingol (Code_Thingol.Class x) =
-          let val (_, (super, methods)) = x
-          in Class { super = super, methods = methods } end
+          let val (var, (super, methods)) = x
+          in Class { var = var, super = super, methods = methods } end
       | python_stmt_of_thingol (Code_Thingol.Classinst inst) = 
         let val { vs, tyco, inst_params, superinsts, ... } = inst
         in Instance { vs = vs, tyco = tyco, inst_params = inst_params, superinsts = superinsts }
