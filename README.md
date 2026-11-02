@@ -100,10 +100,10 @@ closure created in one iteration would see the next iteration's rebinding.
 
 The option `python_type_annotations` (off by default) is the start of type
 annotations in the generated code, in the PEP 695 syntax of Python 3.12. It is
-work in progress: so far it covers datatypes and monomorphic functions and
-values. Each constructor becomes a
-generic dataclass with typed fields, over the type parameters these fields use,
-and the datatype becomes the union of its constructors:
+work in progress: so far it covers datatypes, and functions and values without
+sort constraints. Each constructor becomes a generic dataclass with typed
+fields, over the type parameters these fields use, and the datatype becomes the
+union of its constructors:
 
 ```python
 @dataclass(frozen=True)
@@ -115,17 +115,22 @@ class Some[A]:
 type option[A] = None_ | Some[A]
 ```
 
-A function or value whose type has no type variables gets annotated
-parameters and a return type. Since function values are applied one argument
-at a time, a function-typed parameter or return value has a curried type:
+A function gets annotated parameters and a return type, and declares the type
+variables of its type as PEP 695 type parameters. Since function values are
+applied one argument at a time, a function-typed parameter or return value has
+a curried type:
 
 ```python
+def px[A](x0: point_ext[A]) -> int: ...
 def apply_twice(f: Callable[[int], int], x: int) -> int: ...
 add_one: Callable[[int], int] = (lambda a: add2(1, a))
 ```
 
-Polymorphic functions and type classes are not annotated yet. Set the option
-like `python_tail_calls`:
+A value is annotated too, unless its type has type variables
+(`empty_list = []`): a module-level assignment cannot declare type parameters.
+
+Type classes, and functions with sort constraints, are not annotated yet. Set
+the option like `python_tail_calls`:
 
 ```bash
 isabelle build -o python_type_annotations -d . -e Python_Examples

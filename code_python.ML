@@ -782,20 +782,21 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
-    (* Annotations of a function of type ty that takes n parameters: the types of the
-       parameters, and the rest of the type as the return type (a function that returns a
-       function value returns it curried, see print_typ). So far only for monomorphic
-       functions. *)
+    (* Annotations of a function of type ty that takes n parameters: its PEP 695 type
+       parameters, the types of the parameters, and the rest of the type as the return type
+       (a function that returns a function value returns it curried, see print_typ). So far
+       not for functions with sort constraints, which take dictionaries. *)
     fun func_signature vs ty n =
-      if not annotate orelse not (null vs) then NONE
+      if not annotate orelse exists (not o null o snd) vs then NONE
       else
         let
-          val tyvars = intro_tyvars []
+          val tyvars = intro_tyvars (map fst vs)
           val (tys, ran) = Code_Thingol.unfold_fun ty
           val (param_tys, rest) = chop n tys
         in
           if length param_tys <> n then NONE
-          else SOME (map (print_typ tyvars) param_tys, print_typ tyvars (rest `--> ran))
+          else SOME (map (Pretty.str o lookup_var tyvars o fst) vs,
+            map (print_typ tyvars) param_tys, print_typ tyvars (rest `--> ran))
         end
 
     fun print_func_head const vctxt dicts params func_sig =
@@ -803,13 +804,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val param_prettys = map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
                                         | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
           params
-        val (typed_params, ret) = case func_sig of
-            NONE => (param_prettys, [])
-          | SOME (tys, ran) =>
-              (map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) param_prettys tys,
+        val (name, typed_params, ret) = case func_sig of
+            NONE => (Pretty.str (deresolve_const const), param_prettys, [])
+          | SOME (typarams, tys, ran) =>
+              (print_typ_app (Pretty.str (deresolve_const const)) typarams,
+               map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) param_prettys tys,
                [Pretty.str " -> ", ran])
       in
-        Pretty.block ([Pretty.str "def ", Pretty.str (deresolve_const const),
+        Pretty.block ([Pretty.str "def ", name,
           Pretty.enum "," "(" ")" (dicts @ typed_params)] @ ret @ [Pretty.str ":"])
       end
 
@@ -956,12 +958,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           if prints_as_value
           then
             (* value definition: `const = (expr)`, or `const: T = (expr)`; if the
-               value is computed by a match, every arm gets the annotation *)
+               value is computed by a match, every arm gets the annotation. A polymorphic
+               value (`empty_list = []`) is not annotated: a module-level assignment
+               cannot declare type parameters. *)
             let
               val { rhs = t, thm = some_thm, ... } = hd eqs
               val target = case func_sig of
-                  NONE => deresolve_const const
-                | SOME (_, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
+                  SOME ([], _, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
+                | _ => deresolve_const const
             in print_binding some_thm vars2 (target, t) end
           else if simple
           then
