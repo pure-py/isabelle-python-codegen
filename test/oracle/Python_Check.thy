@@ -72,6 +72,15 @@ fun check name t lthy =
     val _ = full_name = Long_Name.qualify module (name ^ "_ok") orelse
       error ("python_check " ^ quote name ^ ": not at theory level (would define " ^
         quote full_name ^ ")");
+    val frees = Term.add_free_names t [];
+    val _ = null frees orelse
+      error ("python_check " ^ quote name ^ ": free variables " ^ commas_quote (rev frees));
+    (*the constants would take an extra 'a itself argument, so name_ok(None) would
+      not compute the check*)
+    val tvars = Term.add_tfree_names t [] @ map (fst o fst) (Term.add_tvars t []);
+    val _ = null tvars orelse
+      error ("python_check " ^ quote name ^ ": type variables " ^ commas (rev tvars) ^
+        ", add type annotations");
     val T = fastype_of t;
     val _ = Sign.of_sort thy (T, \<^sort>\<open>equal\<close>) orelse
       error ("python_check " ^ quote name ^ ": type has no equality: " ^
