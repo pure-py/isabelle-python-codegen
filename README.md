@@ -50,7 +50,7 @@ per line in `etc/python_reserved_words`: the keywords, soft keywords and
 builtins of the Python version in `.python-version`. Lines starting with `#`
 are comments. `Python.thy` reserves every name in the file, together with the
 names that the prelude of each generated module binds (`dataclass`, `Any`,
-`Callable`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
+`Callable`, `Never`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
 `code_python.ML`).
 
 A definition, class or datatype with a reserved name gets a trailing
@@ -95,6 +95,21 @@ whose equations create closures (a lambda, or a partial application printed as
 one) is left recursive: Python closures capture variables, not values, so a
 closure created in one iteration would see the next iteration's rebinding.
 `examples/Example_tail_calls.thy` shows both outputs side by side.
+
+### Type annotations
+
+The option `python_type_annotations` (off by default) is the start of type
+annotations in the generated code, in the PEP 695 syntax of Python 3.12. It is
+work in progress: so far it only adds `from __future__ import annotations` and
+a typed `_abort` to each module. Set it like `python_tail_calls`:
+
+```bash
+isabelle build -o python_type_annotations -d . -e Python_Examples
+```
+
+Changing the option does not rebuild an up-to-date session, so add `-c` to
+rebuild the session when switching it on or off. `make typecheck-diff` builds
+the examples with the option and runs pyright over them.
 
 ## Running the tests
 

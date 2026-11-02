@@ -42,6 +42,20 @@ jobs:
       - name: Run diff test suite
         run: uv run pytest test/diff/run_test.py
 
+      # -o needs the option declared in etc/options, which Isabelle only reads for a
+      # registered component
+      - name: register component
+        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
+
+      - name: extract Python code with type annotations
+        run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
+
+      # TODO: drop continue-on-error once function signatures are annotated; until then
+      # pyright cannot see that a match without a fallthrough arm is exhaustive
+      - name: type-check generated code
+        continue-on-error: true
+        run: uv run pyright examples/python_out
+
   oracle:
     runs-on: ubuntu-latest
     container:

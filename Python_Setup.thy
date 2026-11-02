@@ -148,7 +148,7 @@ setup \<open>
 
 (* Lists *)
 code_printing
-    type_constructor List.list \<rightharpoonup> (Python) "_ list"
+    type_constructor List.list \<rightharpoonup> (Python) "list[_]"
   | constant List.list.Nil \<rightharpoonup> (Python) "[]"
 
 code_printing
@@ -192,7 +192,7 @@ setup \<open> Code_Python.enable_native_encoding "list" \<close>
 
 (* Pairs *)
 code_printing
-    type_constructor Product_Type.prod \<rightharpoonup> (Python) "(_ * _)"
+    type_constructor Product_Type.prod \<rightharpoonup> (Python) "tuple[_, _]"
   | constant Product_Type.Pair \<rightharpoonup> (Python) "(_, _)"
   | constant fst \<rightharpoonup> (Python) "_[0]"
   | constant snd \<rightharpoonup> (Python) "_[1]"

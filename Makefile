@@ -17,8 +17,9 @@ build-test-quick:
 test-quick:
 	$(PYTEST) test/quick/run_test.py
 
+# -c: a changed python_type_annotations does not rebuild the session by itself
 build-examples:
-	$(ISABELLE) build -d . -e Python_Examples
+	$(ISABELLE) build -d . -c -e Python_Examples
 
 test-diff: build-examples
 	$(PYTEST) test/diff/run_test.py
@@ -28,6 +29,10 @@ build-test-oracle:
 
 test-oracle: build-test-oracle
 	$(PYTEST) test/oracle/run_test.py
+
+typecheck-diff:
+	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Examples
+	uv run pyright examples/python_out
 
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py
@@ -42,7 +47,7 @@ test: test-quick
 build:
 	$(ISABELLE) build -d . -e Python
 
-.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle build reserved-words
+.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff typecheck-diff reseed test-all test build-test-oracle test-oracle build reserved-words
 
 
 

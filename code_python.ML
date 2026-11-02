@@ -6,6 +6,7 @@ sig
   val enable_native_encoding: string -> theory -> theory
   val print_python_string: string -> string
   val tail_calls: bool Config.T
+  val type_annotations: bool Config.T
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -26,6 +27,13 @@ val tail_calls =
   if can Options.default_typ "python_tail_calls"
   then Attrib.setup_option_bool ("python_tail_calls", \<^here>)
   else Attrib.setup_config_bool \<^binding>\<open>python_tail_calls\<close> (K false);
+
+(* Print type annotations (PEP 484, with the PEP 695 generics of Python 3.12). Off by default,
+   set up like python_tail_calls *)
+val type_annotations =
+  if can Options.default_typ "python_type_annotations"
+  then Attrib.setup_option_bool ("python_type_annotations", \<^here>)
+  else Attrib.setup_config_bool \<^binding>\<open>python_type_annotations\<close> (K false);
 
 structure Transparent_Wrapper_Data = Theory_Data
 (
@@ -70,7 +78,7 @@ fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy)
 
 (* Names bound by the prelude of every generated module; the keywords and builtins of
    Python are reserved by Python.thy, from etc/python_reserved_words *)
-val prelude_names = ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];
+val prelude_names = ["dataclass", "Any", "Callable", "Never", "_unimplemented", "_abort", "functools"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -163,6 +171,8 @@ fun invent_names vars prefix n =
  * arguments:
  *   undefineds: intentionally unimplemented symbols, turn into `_abort(...)`
  *   const_syntax: custom registered code_printing declarations for constants
+ *   tyco_syntax: custom registered code_printing declarations for type constructors
+ *   tyvar_ctxt: names a type variable must not take (everything the module binds)
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
@@ -170,12 +180,38 @@ fun invent_names vars prefix n =
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *)
-fun print_python_stmt undefineds const_syntax reserved args_num
+fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
     is_class_param is_value is_constr ctxt deresolve =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_inst name = deresolve (Class_Instance name);
+
+    (* Python names of type variables: capitalised ('a -> A), and distinct from every
+       name the module binds, as a PEP 695 type parameter shadows them in the body
+       of the function or class that declares it *)
+    fun intro_tyvars vs =
+      let
+        val capitalize = implode o nth_map 0 Symbol.to_ascii_upper o Symbol.explode
+        val (names, ctxt') = fold_map (Name.variant o capitalize) vs tyvar_ctxt
+      in (fold2 (curry Symtab.update) vs names Symtab.empty, ctxt') end;
+
+    (* A function value is applied one argument at a time, so its type is curried:
+       a => b => c is Callable[[a], Callable[[b], c]]. A type without a Python name
+       (e.g. a datatype without constructors, which is not printed) is Any. *)
+    fun print_typ tyvars (ITyVar v) = Pretty.str (lookup_var tyvars v)
+      | print_typ tyvars ("fun" `%% [ty1, ty2]) =
+          Pretty.block [Pretty.str "Callable[[", print_typ tyvars ty1, Pretty.str "], ",
+            print_typ tyvars ty2, Pretty.str "]"]
+      | print_typ tyvars (tyco `%% tys) =
+          (case tyco_syntax tyco of
+            SOME (_, print) => print (K (print_typ tyvars)) NOBR tys
+          | NONE =>
+              (case try deresolve (Type_Constructor tyco) of
+                SOME name => print_typ_app (Pretty.str name) (map (print_typ tyvars) tys)
+              | NONE => Pretty.str "Any"))
+    and print_typ_app head [] = head
+      | print_typ_app head ps = Pretty.block [head, Pretty.enum "," "[" "]" ps];
 
     (* Attribute name of a class dataclass field (method or superclass).
        Declaration, construction and projection must all use this, as
@@ -970,7 +1006,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
   in flat_program module_names end;
 
 fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
-    identifiers, includes, const_syntax, ... } program exports =
+    identifiers, includes, const_syntax, tyco_syntax, ... } program exports =
   let
     val program =
       Code_Symbol.Graph.restrict
@@ -1068,6 +1104,16 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 
     val module_names = Graph.keys python_program;
 
+    (* Names a type variable of a module must avoid: the reserved names, the imported
+       modules, and every statement of the module *)
+    fun tyvar_ctxt mod_name =
+      let val (stmt_gr, _) = Graph.get_node python_program mod_name
+      in Name.make_context reserved_syms
+        |> fold Name.declare module_names
+        |> fold Name.declare
+          (map_filter (try (deresolver mod_name)) (Code_Symbol.Graph.keys stmt_gr))
+      end;
+
     (* `program` (and therefore python_program) has already been pruned
       down to exactly the live statements above, so this is just: print
       every surviving statement, drop empty modules. *)
@@ -1080,8 +1126,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
               of (_, NONE) => NONE
               | (_, SOME (export, stmt)) =>
-                  SOME (print_python_stmt undefineds const_syntax
-                    (make_vars reserved_syms) args_num is_class_param is_value
+                  SOME (print_python_stmt undefineds const_syntax tyco_syntax
+                    (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
                     is_constr ctxt (deresolver mod_name)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
@@ -1122,12 +1168,18 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val import_ps = imports
           |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
-        val imports_block = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
-          :: Pretty.str "from typing import Any, Callable"
+        (* annotations are not evaluated (PEP 563), so they may refer to classes and
+           type aliases defined further down, e.g. in recursive datatypes *)
+        val annotate = Config.get ctxt type_annotations
+        val imports_block = Pretty.chunks
+          ((if annotate then [Pretty.str "from __future__ import annotations"] else [])
+          @ Pretty.str "from dataclasses import dataclass"
+          :: Pretty.str ("from typing import Any, Callable" ^ (if annotate then ", Never" else ""))
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
         val abort_def = Pretty.chunks
-          [Pretty.str "def _abort(msg, thunk):",
+          [Pretty.str (if annotate then "def _abort(msg: str, thunk: object) -> Never:"
+             else "def _abort(msg, thunk):"),
            indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
       in ([mod_name ^ ".py"],
         Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: stmt_ps))

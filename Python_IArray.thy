@@ -13,7 +13,7 @@ text \<open>
 \<close>
 
 code_printing
-    type_constructor iarray \<rightharpoonup> (Python) "_ tuple"
+    type_constructor iarray \<rightharpoonup> (Python) "tuple[_, ...]"
   | constant IArray \<rightharpoonup> (Python) "tuple'(_')"
   | constant IArray.list_of \<rightharpoonup> (Python) "list'(_')"
   | constant IArray.sub \<rightharpoonup> (Python) "_[_]"
