@@ -63,6 +63,15 @@ jobs:
           for d in examples/python_out/*/code; do uv run mypy "$d" || status=1; done
           exit $status
 
+      - name: type-check generated code with ty
+        # ty finds the casts that are there for mypy redundant
+        run: |
+          status=0
+          for d in examples/python_out/*/code; do
+            uv run ty check --python-version 3.12 --no-progress --ignore redundant-cast --extra-search-path "$d" "$d" || status=1
+          done
+          exit $status
+
   oracle:
     runs-on: ubuntu-latest
     container:
@@ -120,4 +129,11 @@ jobs:
         run: |
           uv run mypy test/slow/generated_basic
           uv run mypy test/slow/generated_full
+
+      - name: type-check generated code with ty
+        # ty finds the casts that are there for mypy redundant
+        run: |
+          for d in test/slow/generated_basic test/slow/generated_full; do
+            uv run ty check --python-version 3.12 --no-progress --ignore redundant-cast --extra-search-path "$d" "$d"
+          done
           

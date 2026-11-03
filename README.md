@@ -196,7 +196,7 @@ directory is registered as an Isabelle component (`isabelle components -u .`)
 before the `Python` session is built, since Isabelle reads `etc/options` only
 for a component. `make typecheck-diff` builds
 the examples with the option, compares them with their golden files (see the
-`diff` suite below) and runs mypy over them, one example directory at a time
+`diff` suite below) and runs mypy and ty over them, one example directory at a time
 (each has its own copy of the library modules).
 
 A function without code, which always aborts, returns `Never`. A lambda becomes
@@ -263,7 +263,15 @@ since mypy rejects binding the result of a function that returns `None`.
 
 Mypy accepts the code generated for the slow suite (`generated_basic` and
 `generated_full`) and checks each in about a second; `make typecheck-slow`
-builds it with the option and runs mypy, as CI does.
+builds it with the option and runs mypy and ty, as CI does.
+
+[ty](https://github.com/astral-sh/ty) accepts the same code; it is pinned to
+the version tested, as it is still in beta. It infers a literal such as `[]`
+from the type it is expected to have, so it finds the casts that mypy needs
+redundant, and runs with `--ignore redundant-cast`. Pyright also accepts the
+examples, but takes too long on the slow suite: it is exponential in the depth
+of nested calls of generic constructors, which the Quickcheck generators and
+`term_of` functions are full of.
 
 ## Running the tests
 

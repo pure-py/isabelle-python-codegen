@@ -1,6 +1,8 @@
 ISABELLE = isabelle
 PYTEST = uv run pytest
 PYTHON = uv run python3
+# ty finds the casts that are there for mypy redundant
+TY = uv run ty check --python-version 3.12 --no-progress --ignore redundant-cast
 
 default: build
 
@@ -35,11 +37,14 @@ typecheck-diff:
 	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Examples
 	$(PYTEST) test/diff/run_test.py
 	status=0; for d in examples/python_out/*/code; do uv run mypy $$d || status=1; done; exit $$status
+	status=0; for d in examples/python_out/*/code; do $(TY) --extra-search-path $$d $$d || status=1; done; exit $$status
 
 typecheck-slow:
 	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Test_Slow
 	uv run mypy test/slow/generated_basic
 	uv run mypy test/slow/generated_full
+	$(TY) --extra-search-path test/slow/generated_basic test/slow/generated_basic
+	$(TY) --extra-search-path test/slow/generated_full test/slow/generated_full
 
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py
