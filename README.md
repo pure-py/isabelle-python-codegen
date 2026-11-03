@@ -227,12 +227,25 @@ Mypy infers the parameter types of a lambda passed to a generic function by
 checking its body again for each candidate, so nested lambdas take exponential
 time: the generators of `Quickcheck_Random` took it hours to check.
 
+A type checker infers a type parameter of a generic function from a
+constructor argument as the constructor's class: in `fold(f, xs, Nil())`, mypy
+takes `Nil` for `B` rather than `list_[A]`, which then does not fit `f`; and from
+a generic value such as `top_set()` it infers `set_[Never]`. Such an argument for
+a parameter declared with a bare type variable is therefore cast to the type at
+the call:
+
+```python
+return (fold(lam, xs, cast(list_[A], Nil())))
+```
+
 Mypy does not accept all annotated code. It cannot always infer the type
-parameters of a generic higher-order call whose arguments are lambdas
-(`Fun.comp(...)`). It infers the type parameter of a generic call from a
-constructor argument as that constructor's class: in `fold(f, xs, Nil())` it
-takes `Nil`, not `list_[A]`, which then does not fit `f`. Over the slow suite
-this leaves 19 errors in `generated_basic` and 16 in `generated_full`; mypy checks each in about a second.
+parameters of a generic higher-order call (`Fun.comp(Fun.comp(f, g), List.rev)`
+in `Word`). An instance whose type parameter only occurs in its result
+(`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) cannot be applied where
+that parameter is needed. And the unit result of `trace` and `flush` (`Debug`) is
+bound to a variable, although their annotation says they return nothing. Over
+the slow suite this leaves 4 errors in `generated_basic` and 3 in
+`generated_full`; mypy checks each in about a second.
 
 ## Running the tests
 

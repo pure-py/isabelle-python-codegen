@@ -182,6 +182,8 @@ fun invent_names vars prefix n =
  *   is_cached_value: true for a value, which is printed as a cached function without
  *     arguments (see serialize_python)
  *   is_constr: true for a datatype constructor without a printing
+ *   generic_dom: the parameter types of a function as it is declared, before its type
+ *     variables are instantiated (empty for other symbols)
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *   lam_tyvars: the type variables that the annotations of hoisted lambdas (see anf_term)
@@ -189,7 +191,7 @@ fun invent_names vars prefix n =
  *     print as Any
  *)
 fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
-    is_class_param is_value is_cached_value is_constr ctxt deresolve lam_tyvars =
+    is_class_param is_value is_cached_value is_constr generic_dom ctxt deresolve lam_tyvars =
   let
     fun deresolve_const name = deresolve (Constant name);
     (* names of the local definitions of this statement so far, see invent_local *)
@@ -741,16 +743,34 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
 
     and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
-    and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
+    and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, dom, ...}, ts)) =
       let
         val l = args_num sym
+        (* With type annotations, a constructor argument for a parameter whose declared type
+           is a type variable is cast to the instantiated type: a type checker would take the
+           constructor's own class for the type variable (`fold(f, xs, Nil())` makes B Nil
+           rather than list_[A]), which then does not fit the other arguments. So is a
+           generic value (`fold(f, xs, top_set())`), whose type parameters it would take
+           for Never. *)
+        val declared_dom = if annotate then generic_dom sym else []
+        fun is_constr_app t = case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = sym' as Constant c, typargs, ... }, _) =>
+              is_some (Code.get_type_of_constr_or_abstr thy c)
+              orelse (is_cached_value sym' andalso not (null typargs))
+          | _ => false
+        fun print_arg i t =
+          if i < length declared_dom andalso i < length dom
+            andalso (case nth declared_dom i of ITyVar _ => true | _ => false)
+            andalso is_constr_app t
+          then Pretty.block [Pretty.str "cast(", print_local_typ (nth dom i), Pretty.str ", ",
+            print_python_expr const_syntax some_thm vars NOBR t, Pretty.str ")"]
+          else print_python_expr const_syntax some_thm vars BR t
         (* a value is referenced by calling its cached function *)
         val name_pretty = Pretty.str (deresolve sym ^ (if is_cached_value sym then "()" else ""))
         fun call_with head_pretty extra_dicts =
           let
             val (immediate, curried) = chop l ts
-            val immediate_pretty =
-              map (print_python_expr const_syntax some_thm vars BR) immediate
+            val immediate_pretty = map_index (uncurry print_arg) immediate
             val curried_pretty =
               map (fn t => Pretty.enclose "(" ")"
                 [print_python_expr const_syntax some_thm vars NOBR t]) curried
@@ -1281,7 +1301,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         | _ => false)
       | is_class_param _ = raise Fail "should never be reached";
       
-    fun is_value sym = 
+    fun is_value sym =
+      Code_Symbol.Graph.defined program sym andalso
       case sym of
         Constant _ => (
           case Code_Symbol.Graph.get_node program sym of 
@@ -1311,6 +1332,11 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       reading an attribute of a module that is still being imported would fail. And a value
       that calls a constant without code only raises when it is used. *)
     val is_cached_value = is_assigned_value;
+
+    fun generic_dom (sym as Constant _) = (case Code_Symbol.Graph.get_node program sym of
+          Code_Thingol.Fun (((_, ty), _), _) => fst (Code_Thingol.unfold_fun ty)
+        | _ => [])
+      | generic_dom _ = [];
 
     fun classparams_of_class class = 
       case Code_Symbol.Graph.get_node program (Type_Class class) of 
@@ -1386,7 +1412,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               | (_, SOME (export, stmt)) =>
                   SOME (print_python_stmt undefineds const_syntax typ_syntax
                     (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
-                    is_cached_value is_constr ctxt (deresolver mod_name) (lam_tyvars stmt)
+                    is_cached_value is_constr generic_dom ctxt (deresolver mod_name) (lam_tyvars stmt)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
@@ -1434,8 +1460,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           ((if annotate then [Pretty.str "from __future__ import annotations"] else [])
           @ Pretty.str "from dataclasses import dataclass"
           :: Pretty.str ("from typing import Any, Callable" ^
-            (if annotate then ", Never" else "") ^
-            (if annotate andalso needs_functools mod_name then ", cast" else ""))
+            (if annotate then ", Never, cast" else ""))
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
         val abort_def = Pretty.chunks
