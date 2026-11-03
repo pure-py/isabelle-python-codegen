@@ -195,8 +195,9 @@ rebuild the session when switching it on or off. `-o` only works when the
 directory is registered as an Isabelle component (`isabelle components -u .`)
 before the `Python` session is built, since Isabelle reads `etc/options` only
 for a component. `make typecheck-diff` builds
-the examples with the option and runs mypy over them, one example directory at
-a time (each has its own copy of the library modules).
+the examples with the option, compares them with their golden files (see the
+`diff` suite below) and runs mypy over them, one example directory at a time
+(each has its own copy of the library modules).
 
 A function without code, which always aborts, returns `Never`. A lambda becomes
 a local function with annotated parameters, and so does a partial application:
@@ -302,7 +303,10 @@ modules that are known not to import are listed in `KNOWN_FAILURES` there.
 During the development of this code generator, different Isabelle features were
 tested in isolation in different example theories under `examples/`. To see if
 changes to the backend result in changes to the extracted code, the `diff` test
-suite holds golden reference files under `test/diff/golden/`.
+suite holds golden reference files under `test/diff/golden/`, and those of the
+output with type annotations under `test/diff/golden_annotated/`. The test and
+`reseed_goldens.py` tell the two apart by the `from __future__ import
+annotations` that starts every annotated module.
 
 ```bash
 isabelle build -d . -e Python_Examples
@@ -316,6 +320,10 @@ the golden files can be recreated by
 isabelle build -d . -e Python_Examples
 uv run python test/diff/reseed_goldens.py
 ```
+
+and those of the annotated output by the same commands with `-c -o
+python_type_annotations` added to the build (`make reseed-annotated`). A change
+to the backend usually changes both sets.
 
 ## Known limitations
 

@@ -53,6 +53,9 @@ jobs:
           /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
           grep -q "from __future__ import annotations" examples/python_out/Python_Examples.Example/code/Example.py
 
+      - name: Run diff test suite on annotated code
+        run: uv run pytest test/diff/run_test.py
+
       - name: type-check generated code
         # each example has its own copy of the library modules, so check them one by one
         run: |
