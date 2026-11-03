@@ -59,6 +59,10 @@ def describable_shape():
 def announce(a_dict, x):
     return (a_dict.describe(x) + a_dict.describe(x))
 
-announce_red = (announce(describable_color(), Red()))
+@functools.cache
+def announce_red():
+    return (announce(describable_color(), Red()))
 
-announce_circle = (announce(describable_shape(), Circle()))
+@functools.cache
+def announce_circle():
+    return (announce(describable_shape(), Circle()))

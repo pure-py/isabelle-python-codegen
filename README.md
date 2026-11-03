@@ -50,20 +50,14 @@ per line in `etc/python_reserved_words`: the keywords, soft keywords and
 builtins of the Python version in `.python-version`. Lines starting with `#`
 are comments. `Python.thy` reserves every name in the file, together with the
 names that the prelude of each generated module binds (`dataclass`, `Any`,
-`Callable`, `Never`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
+`Callable`, `Never`, `cast`, `functools`, `_abort`, `_cached`, `_unimplemented`;
+`prelude_names` in
 `code_python.ML`).
 
-### Modules and import cycles
+### Values and modules
 
-Each theory becomes a Python module (unless `code_identifier` or the
-`module_name` of `export_code` says otherwise). Code equations may use
-constants of later theories, e.g. `Num.num_of_nat` is implemented by
-`Code_Numeral.num_of_integer`, so the modules can import each other: in the
-HOL library, about 50 modules form one import cycle. Python allows this as long
-as no module reads an attribute of a module that is still being imported,
-which only a value definition (`x = ...`) does. A value that depends on a
-module in its own import cycle is therefore printed as a cached function
-without arguments, and its uses call it:
+A value is printed as a cached function without arguments, and its uses call
+it, so it is evaluated once, when it is first used:
 
 ```python
 @functools.cache
@@ -71,9 +65,20 @@ def num_of_nat():
     return (Fun.comp(Arith.num_of_integer, lambda a: a))
 ```
 
-The same holds for a value that calls a constant without code (`_abort`), or
-uses such a value, so that it raises when it is used rather than when its module
-is imported. All other values stay plain assignments.
+Code that uses the generated modules therefore calls a value too
+(`Example_nat.nat_sum()`). An alias of a function (`f_int = f`), or a value
+whose type is a function of two or more arguments, is printed as an ordinary
+function instead.
+
+Importing a module thus evaluates nothing, which matters for two reasons. Each
+theory becomes a Python module (unless `code_identifier` or the `module_name` of
+`export_code` says otherwise), and code equations may use constants of later
+theories, e.g. `Num.num_of_nat` is implemented by `Code_Numeral.num_of_integer`.
+So the modules can import each other: in the HOL library, about 50 modules form
+one import cycle. Python allows this as long as no module reads an attribute of
+a module that is still being imported, which evaluating a value could do. And a
+value that calls a constant without code (`_abort`) raises when it is used,
+rather than when its module is imported.
 
 A definition, class or datatype with a reserved name gets a trailing
 underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
@@ -145,11 +150,13 @@ a curried type:
 ```python
 def px[A](x0: point_ext[A]) -> int: ...
 def apply_twice(f: Callable[[int], int], x: int) -> int: ...
-add_one: Callable[[int], int] = (lambda a: add2(1, a))
+@_cached
+def empty_list[A]() -> list[A]: ...
 ```
 
-A value is annotated too, unless its type has type variables
-(`empty_list = []`): a module-level assignment cannot declare type parameters.
+A value is cached with `_cached`, which the prelude defines on top of
+`functools.cache`: `functools.cache` would hide the type parameters of
+`empty_list` from a type checker.
 
 A type class becomes a generic dataclass over its type variable. Methods are
 called with all their arguments at once, so their fields have uncurried types.
@@ -175,9 +182,7 @@ Some printing differs from the output without the option, so that a type
 checker accepts the code. A `match` keeps its final `case _:` arm that raises an
 error, unless its last pattern is a variable or a wildcard: a type checker
 cannot tell that the other patterns are exhaustive, and would otherwise report
-a missing return. The lambdas hoisted out of a value `v` are named `_v_lam`
-rather than `lam`, so that two values in one module do not define the same
-name at different types.
+a missing return.
 
 Set the option like `python_tail_calls`:
 
@@ -190,15 +195,15 @@ rebuild the session when switching it on or off. `make typecheck-diff` builds
 the examples with the option and runs mypy over them, one example directory at
 a time (each has its own copy of the library modules).
 
-A polymorphic value has `Any` for its type variables (`empty_list: list[Any] =
-[]`), since a module-level assignment cannot declare type parameters. A function
-without code, which always aborts, returns `Never`. A lambda becomes a local
-function with annotated parameters, and so does a partial application:
+A function without code, which always aborts, returns `Never`. A lambda becomes
+a local function with annotated parameters, and so does a partial application:
 
 ```python
-def _add_one_lam(a: int) -> int:
-    return (add2(1, a))
-add_one: Callable[[int], int] = (_add_one_lam)
+@_cached
+def add_one() -> Callable[[int], int]:
+    def lam(a: int) -> int:
+        return (add2(1, a))
+    return (lam)
 ```
 
 Mypy infers the parameter types of a lambda passed to a generic function by
@@ -211,7 +216,7 @@ parameters of a generic higher-order call whose arguments are lambdas
 (`zero_nat_`) cannot take another constructor of the same type later, and a list
 of one constructor's type, such as `list[App]`, is not a `list[term]`, since
 lists are invariant. Over the slow suite this leaves 51 errors in
-`generated_basic` and 33 in `generated_full`; mypy checks each in about a second.
+`generated_basic` and 35 in `generated_full`; mypy checks each in about a second.
 
 ## Running the tests
 

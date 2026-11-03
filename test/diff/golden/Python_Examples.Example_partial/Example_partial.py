@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -10,16 +11,24 @@ def _abort(msg, thunk):
 def add2(x, y):
     return ((x + y))
 
-add_one = (lambda a: add2(1, a))
+@functools.cache
+def add_one():
+    return (lambda a: add2(1, a))
 
 def add2_ref(a, b):
     return (add2(a, b))
 
-p_mapped = (list(map(add_one, [1, 2, 3])))
+@functools.cache
+def p_mapped():
+    return (list(map(add_one(), [1, 2, 3])))
 
 def apply_twice(f, x):
     return (f(f(x)))
 
-p_result = (apply_twice(add_one, 5))
+@functools.cache
+def p_result():
+    return (apply_twice(add_one(), 5))
 
-p_ref_result = (add2_ref(3, 4))
+@functools.cache
+def p_ref_result():
+    return (add2_ref(3, 4))

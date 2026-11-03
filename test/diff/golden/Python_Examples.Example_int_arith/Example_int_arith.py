@@ -2,28 +2,47 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-product = ((6 * 7))
+@functools.cache
+def product():
+    return ((6 * 7))
 
 def checksum(x, y):
     return ((((lambda a, b: a % b if b else a)(((x * y)), ((y - x)))) + ((lambda a, b: a // b if b else 0)(x, 2))))
 
-zero_test = (0)
+@functools.cache
+def zero_test():
+    return (0)
 
-neg_product = ((((- 3)) * 4))
+@functools.cache
+def neg_product():
+    return ((((- 3)) * 4))
 
-quotient_neg = ((lambda a, b: a // b if b else 0)(((- 7)), 2))
+@functools.cache
+def quotient_neg():
+    return ((lambda a, b: a // b if b else 0)(((- 7)), 2))
 
-quotient_pos = ((lambda a, b: a // b if b else 0)(7, 2))
+@functools.cache
+def quotient_pos():
+    return ((lambda a, b: a // b if b else 0)(7, 2))
 
-remainder_neg = ((lambda a, b: a % b if b else a)(((- 7)), 2))
+@functools.cache
+def remainder_neg():
+    return ((lambda a, b: a % b if b else a)(((- 7)), 2))
 
-remainder_pos = ((lambda a, b: a % b if b else a)(7, 2))
+@functools.cache
+def remainder_pos():
+    return ((lambda a, b: a % b if b else a)(7, 2))
 
-quotient_neg_divisor = ((lambda a, b: a // b if b else 0)(7, ((- 2))))
+@functools.cache
+def quotient_neg_divisor():
+    return ((lambda a, b: a // b if b else 0)(7, ((- 2))))
 
-remainder_neg_divisor = ((lambda a, b: a % b if b else a)(7, ((- 2))))
+@functools.cache
+def remainder_neg_divisor():
+    return ((lambda a, b: a % b if b else a)(7, ((- 2))))

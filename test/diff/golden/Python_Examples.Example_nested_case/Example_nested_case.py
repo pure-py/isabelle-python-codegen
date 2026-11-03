@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -37,13 +38,21 @@ def abs_manual(x):
     else:
         return (x)
 
-label_five = (nat_label((max(0, 5))))
+@functools.cache
+def label_five():
+    return (nat_label((max(0, 5))))
 
-label_zero = (nat_label(0))
+@functools.cache
+def label_zero():
+    return (nat_label(0))
 
-weird_five = (weird((max(0, 5))))
+@functools.cache
+def weird_five():
+    return (weird((max(0, 5))))
 
-weird_zero = (weird(0))
+@functools.cache
+def weird_zero():
+    return (weird(0))
 
 def describe_len(xs):
     target = (xs)
@@ -56,12 +65,22 @@ def describe_len(xs):
             raise RuntimeError("match failed")
     return ((x + 1))
 
-classify_zero = (classify(0))
+@functools.cache
+def classify_zero():
+    return (classify(0))
 
-abs_manual_neg = (abs_manual(((- 7))))
+@functools.cache
+def abs_manual_neg():
+    return (abs_manual(((- 7))))
 
-abs_manual_pos = (abs_manual(7))
+@functools.cache
+def abs_manual_pos():
+    return (abs_manual(7))
 
-classify_other = (classify((max(0, 5))))
+@functools.cache
+def classify_other():
+    return (classify((max(0, 5))))
 
-describe_len_123 = (describe_len([1, max(0, 2), max(0, 3)]))
+@functools.cache
+def describe_len_123():
+    return (describe_len([1, max(0, 2), max(0, 3)]))

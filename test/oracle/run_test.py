@@ -16,7 +16,8 @@ Each theory that runs python_export_checks exports oracle/manifest.json and
 the generated modules under test/oracle/python_out/<session>.<theory>/.
 Each check `c` in the manifest names the module that defines `c_ok` (the
 generated `t = r`, where r is Isabelle's value of t) and `c_actual` (the
-generated t, for failure messages), both functions of a unit argument.
+generated t, for failure messages), both values of a unit function type: cached
+functions without arguments that return a function of a unit argument.
 """
 
 import importlib
@@ -82,16 +83,17 @@ def test_agrees_with_isabelle(code_dir, module, check):
         pytest.fail(f"{term}: module {module} does not import: {_describe(e)}",
                     pytrace=False)
     name = check["name"]
-    actual_fn = getattr(m, f"{name}_actual")
+    actual_def = getattr(m, f"{name}_actual")
     try:
-        ok = getattr(m, f"{name}_ok")(None)
+        actual_fn = actual_def()
+        ok = getattr(m, f"{name}_ok")()(None)
     except Exception as e:
         pytest.fail(f"{term}: Isabelle gives {check['expected']}, "
-                    f"Python raises {_describe(e)}\n  {_source(actual_fn)}",
+                    f"Python raises {_describe(e)}\n  {_source(actual_def)}",
                     pytrace=False)
     if ok is not True:
         pytest.fail(f"{term}: Isabelle gives {check['expected']}, "
-                    f"Python gives {actual_fn(None)!r}\n  {_source(actual_fn)}",
+                    f"Python gives {actual_fn(None)!r}\n  {_source(actual_def)}",
                     pytrace=False)
 
 
@@ -101,6 +103,7 @@ def _describe(e):
 
 
 def _source(fn):
+    fn = inspect.unwrap(fn)
     code = fn.__code__
     try:
         source = inspect.getsource(fn).strip()

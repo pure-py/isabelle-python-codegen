@@ -78,7 +78,8 @@ fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy)
 
 (* Names bound by the prelude of every generated module; the keywords and builtins of
    Python are reserved by Python.thy, from etc/python_reserved_words *)
-val prelude_names = ["dataclass", "Any", "Callable", "Never", "_unimplemented", "_abort", "functools"];
+val prelude_names = ["dataclass", "Any", "Callable", "Never", "cast", "_unimplemented", "_abort",
+  "_cached", "functools"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -178,17 +179,17 @@ fun invent_names vars prefix n =
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
  *   is_value: true for a value definition (a nullary constant without dictionaries)
- *   is_lazy_value: true for a value that is printed as a cached function, see
- *     serialize_python
+ *   is_cached_value: true for a value, which is printed as a cached function without
+ *     arguments (see serialize_python)
  *   is_constr: true for a datatype constructor without a printing
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
- *   lam_prefix: prefix of the names of hoisted lambdas (see anf_term)
- *   lam_tyvars: the type variables that the annotations of hoisted lambdas may name, those
- *     of the generic function they are in; NONE outside of one, where they print as Any
+ *   lam_tyvars: the type variables that the annotations of hoisted lambdas (see anf_term)
+ *     may name, those of the generic function they are in; NONE outside of one, where they
+ *     print as Any
  *)
 fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
-    is_class_param is_value is_lazy_value is_constr ctxt deresolve lam_prefix lam_tyvars =
+    is_class_param is_value is_cached_value is_constr ctxt deresolve lam_tyvars =
   let
     fun deresolve_const name = deresolve (Constant name);
     (* names of the lambdas hoisted out of this statement so far, see anf_term *)
@@ -235,6 +236,9 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
     val thy = Proof_Context.theory_of ctxt
 
     val annotate = Config.get ctxt type_annotations
+    (* With type annotations, functools.cache would hide the type parameters of a function
+       from a type checker; _cached, defined in the prelude, is typed as the identity *)
+    val cache_decorator = Pretty.str (if annotate then "@_cached" else "@functools.cache");
     
     (* Python introduced structural pattern matching in version 3.10. 
      * We can therefore use things like capture patterns, wildcards, and
@@ -545,9 +549,9 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                 then
                   let
                     val (fname, vs') = invent_name
-                      (fst vs, fold Name.declare (! hoisted_lam_names) (snd vs)) lam_prefix
+                      (fst vs, fold Name.declare (! hoisted_lam_names) (snd vs)) "lam"
                   in (hoisted_lam_names := fname :: ! hoisted_lam_names; (fname, vs')) end
-                else invent_name vs lam_prefix
+                else invent_name vs "lam"
               fun curried_defs vs i [param] =
                     let
                       val (fname, vs') = invent_lam_name vs
@@ -717,8 +721,8 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
     and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
       let
         val l = args_num sym
-        (* a lazy value is referenced by calling its cached function *)
-        val name_pretty = Pretty.str (deresolve sym ^ (if is_lazy_value sym then "()" else ""))
+        (* a value is referenced by calling its cached function *)
+        val name_pretty = Pretty.str (deresolve sym ^ (if is_cached_value sym then "()" else ""))
         fun call_with head_pretty extra_dicts =
           let
             val (immediate, curried) = chop l ts
@@ -927,7 +931,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
         (* an instance without dictionary arguments always builds the same
            (frozen) dictionary, so build it once *)
-        val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
+        val decorator = if null dict_args then [cache_decorator] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
     (* Annotations of a function of type ty that takes n parameters: its PEP 695 type
@@ -1046,10 +1050,6 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args vs
-          (* a simple function without parameters and dictionary arguments can
-             be printed as a plain value (i.e., an assignment x = ...) *)
-          val prints_as_value = simple andalso null params andalso null dict_params
-            andalso not (is_lazy_value (Constant const))
           val func_sig = func_signature vs ty (length params)
           val head = print_func_head const vars2 dict_params params func_sig
           fun print_return some_thm vars' t' = Pretty.block [Pretty.str "return (",
@@ -1111,30 +1111,13 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             then Pretty.chunks [Pretty.str "while True:", indent_block 4 body]
             else body
         in
-          if prints_as_value
+          if simple
           then
-            (* value definition: `const = (expr)`, or `const: T = (expr)`; if the
-               value is computed by a match, every arm gets the annotation. A module-level
-               assignment cannot declare type parameters, so a polymorphic value has Any
-               for its type variables (`empty_list: list[Any] = []`). *)
+            (* simple function, plain variable args; a value is a function without
+               arguments that is evaluated once, when it is first used *)
             let
               val { rhs = t, thm = some_thm, ... } = hd eqs
-              val any_tyvars = (fold (fn (v, _) => Symtab.update (v, "Any")) vs Symtab.empty,
-                tyvar_ctxt)
-              val target = case func_sig of
-                  SOME ([], _, _, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
-                | SOME _ => deresolve_const const ^ ": " ^
-                    Pretty.unformatted_string_of (print_typ any_tyvars ty)
-                | NONE => deresolve_const const
-            in print_binding some_thm vars2 (target, t) end
-          else if simple
-          then
-            (* simple function, plain variable args; a lazy value is a function
-               without arguments that is evaluated once *)
-            let
-              val { rhs = t, thm = some_thm, ... } = hd eqs
-              val decorator = if is_lazy_value (Constant const)
-                then [Pretty.str "@functools.cache"] else []
+              val decorator = if is_cached_value (Constant const) then [cache_decorator] else []
             in Pretty.chunks (decorator @
               [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))]) end
           else
@@ -1298,50 +1281,13 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           | _ => false)
       | is_assigned_value _ = false;
     
-    (* The modules follow the theories, and code equations may use constants of later
-      theories (e.g. Num.num_of_nat is implemented by Code_Numeral.num_of_integer), so
-      modules can import each other. Python allows this as long as no module reads
-      an attribute of a module that is still initialising; only value definitions
-      are evaluated at import time. A value that depends on a statement of another
-      module in its strongly connected component of the import graph is therefore
-      printed as a cached function without arguments, which is called where it is
-      used. Any other module it depends on is fully initialised before it. *)
-    val module_of = Graph.fold (fn (mod_name, ((stmt_gr, _), _)) =>
-        fold (fn sym => Code_Symbol.Table.update (sym, mod_name)) (Code_Symbol.Graph.keys stmt_gr))
-      python_program Code_Symbol.Table.empty;
-    val import_graph = Graph.fold (fn (mod_name, ((_, imports), _)) =>
-        fold (fn (imported_name, _) => Graph.add_edge (mod_name, imported_name)) imports)
-      python_program (Graph.map (K (K ())) python_program);
-    val module_cycles = Graph.strong_conn import_graph
-      |> filter (fn mods => length mods > 1);
-    fun cycle_of mod_name = these (find_first (fn mods => member (op =) mods mod_name) module_cycles);
-    fun depends_on_cycle sym = case Code_Symbol.Table.lookup module_of sym of
-        NONE => false
-      | SOME mod_name =>
-          let val others = remove (op =) mod_name (cycle_of mod_name)
-          in not (null others) andalso
-            exists (fn sym' => case Code_Symbol.Table.lookup module_of sym' of
-                SOME mod_name' => member (op =) others mod_name'
-              | NONE => false)
-            (Code_Symbol.Graph.all_succs program [sym])
-          end;
-    (* A value that calls a constant without code (printed as `_abort`) would raise
-      when its module is imported, even if it is never used, so it is printed as a
-      cached function as well; so is a value that uses such a value. *)
-    fun aborts (sym as Constant name) = member (op =) undefineds name orelse
-          (case Code_Symbol.Graph.get_node program sym of
-            Code_Thingol.Fun ((_, eqs), _) => not (exists (snd o snd) eqs)
-          | _ => false)
-      | aborts _ = false;
-    fun depends_on_abort visited sym =
-      exists (fn sym' => aborts sym' orelse
-          (is_assigned_value sym' andalso not (member (op =) visited sym')
-            andalso depends_on_abort (sym' :: visited) sym'))
-        (Code_Symbol.Graph.immediate_succs program sym);
-    val lazy_values = Code_Symbol.Graph.keys program
-      |> filter (fn sym => is_assigned_value sym andalso
-          (depends_on_cycle sym orelse depends_on_abort [sym] sym));
-    fun is_lazy_value sym = member (op =) lazy_values sym;
+    (* Every value is printed as a cached function without arguments, which is called
+      where it is used, so importing a module evaluates nothing. Modules follow theories,
+      and code equations may use constants of later theories (e.g. Num.num_of_nat is
+      implemented by Code_Numeral.num_of_integer), so modules can import each other, and
+      reading an attribute of a module that is still being imported would fail. And a value
+      that calls a constant without code only raises when it is used. *)
+    val is_cached_value = is_assigned_value;
 
     fun classparams_of_class class = 
       case Code_Symbol.Graph.get_node program (Type_Class class) of 
@@ -1408,17 +1354,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
-          (* The lambdas hoisted out of a value definition are defined at module level, so
-             their names must differ from those of any other value: `_v_lam` for the value
-             v (no other name starts with an underscore, except those of the prelude) *)
-          (* a generic function declares its type variables, a value cannot *)
-          fun lam_tyvars sym (Code_Thingol.Fun (((vs, _), _), _)) =
-                if is_assigned_value sym andalso not (is_lazy_value sym) then NONE
-                else SOME (map fst vs)
-            | lam_tyvars _ _ = NONE;
-          fun lam_prefix sym = if is_value sym
-            then "_" ^ Long_Name.base_name (deresolver mod_name sym) ^ "_lam"
-            else "lam";
+          fun lam_tyvars (Code_Thingol.Fun (((vs, _), _), _)) = SOME (map fst vs)
+            | lam_tyvars _ = NONE;
           val stmt_ps = (Code_Symbol.Graph.strong_conn stmt_gr |> flat)
             |> rev
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
@@ -1426,8 +1363,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               | (_, SOME (export, stmt)) =>
                   SOME (print_python_stmt undefineds const_syntax typ_syntax
                     (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
-                    is_lazy_value is_constr ctxt (deresolver mod_name) (lam_prefix sym)
-                    (lam_tyvars sym stmt)
+                    is_cached_value is_constr ctxt (deresolver mod_name) (lam_tyvars stmt)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
@@ -1440,7 +1376,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       in Code_Symbol.Graph.fold (fn (sym, ((_, stmt), _)) => fn b => b orelse
           (case stmt of
             SOME (_, Code_Thingol.Classinst { vs, ... }) => forall (null o snd) vs
-          | SOME _ => is_lazy_value sym
+          | SOME _ => is_cached_value sym
           | _ => false)) stmt_gr false
       end;
 
@@ -1474,15 +1410,23 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val imports_block = Pretty.chunks
           ((if annotate then [Pretty.str "from __future__ import annotations"] else [])
           @ Pretty.str "from dataclasses import dataclass"
-          :: Pretty.str ("from typing import Any, Callable" ^ (if annotate then ", Never" else ""))
+          :: Pretty.str ("from typing import Any, Callable" ^
+            (if annotate then ", Never" else "") ^
+            (if annotate andalso needs_functools mod_name then ", cast" else ""))
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
         val abort_def = Pretty.chunks
           [Pretty.str (if annotate then "def _abort(msg: str, thunk: object) -> Never:"
              else "def _abort(msg, thunk):"),
            indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
+        (* the cache decorator with type annotations, see print_python_stmt *)
+        val cached_def = if annotate andalso needs_functools mod_name
+          then [Pretty.chunks
+            [Pretty.str "def _cached[F: Callable[[], Any]](f: F) -> F:",
+             indent_block 4 (Pretty.str "return cast(F, functools.cache(f))")]]
+          else []
       in ([mod_name ^ ".py"],
-        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: stmt_ps))
+        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: cached_def @ stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

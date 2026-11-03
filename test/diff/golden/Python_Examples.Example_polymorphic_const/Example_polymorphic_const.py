@@ -2,15 +2,24 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-empty_list = ([])
+@functools.cache
+def empty_list():
+    return ([])
 
-magic_number = (max(0, 42))
+@functools.cache
+def magic_number():
+    return (max(0, 42))
 
-uses_empty_list = (empty_list)
+@functools.cache
+def uses_empty_list():
+    return (empty_list())
 
-uses_magic_number = ((magic_number + 1))
+@functools.cache
+def uses_magic_number():
+    return ((magic_number() + 1))

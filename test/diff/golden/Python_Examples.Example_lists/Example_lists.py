@@ -2,14 +2,19 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-example = ([1, 2, 3])
+@functools.cache
+def example():
+    return ([1, 2, 3])
 
 def prepend(x, xs):
     return ([x] + xs)
 
-example2 = (prepend(5, example))
+@functools.cache
+def example2():
+    return (prepend(5, example()))

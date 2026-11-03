@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import IArray
 import Num
 import Nat
@@ -12,14 +13,20 @@ def _abort(msg, thunk):
 def sum_ends(a):
     return (((a[0]) + (a[(max(0, (len(a)) - 1))])))
 
-squares = (tuple(map(lambda i: (i * i), range((max(0, 4))))))
+@functools.cache
+def squares():
+    return (tuple(map(lambda i: (i * i), range((max(0, 4))))))
 
-example = (((list(squares)), ((sum_ends(squares), (((all(map(lambda x: (x < (max(0, 10))), squares))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, max(0, 2)]))))), (tuple([max(0, 2), max(0, 3)])))))))))
+@functools.cache
+def example():
+    return (((list(squares())), ((sum_ends(squares()), (((all(map(lambda x: (x < (max(0, 10))), squares()))), IArray.equal_iarray(Nat.equal_nat(), (tuple((list(map(lambda a: (a + 1), [1, max(0, 2)]))))), (tuple([max(0, 2), max(0, 3)])))))))))
 
 def sub_pair(p):
     return ((lambda p: p[0][p[1]])(p))
 
-example_nth = ([10, 20, 30][1])
+@functools.cache
+def example_nth():
+    return ([10, 20, 30][1])
 
 def first_or_zero(x0):
     match x0:
