@@ -36,11 +36,41 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
+      # -o python_type_annotations needs the option declared in etc/options, which Isabelle
+      # only reads for a registered component; the Python session must be built after this,
+      # or it is compiled without the option and -o has no effect
+      - name: register component
+        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
+
       - name: extract Python code
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Examples
 
       - name: Run diff test suite
         run: uv run pytest test/diff/run_test.py
+
+      - name: extract Python code with type annotations
+        run: |
+          /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
+          grep -q "from __future__ import annotations" examples/python_out/Python_Examples.Example/code/Example.py
+
+      - name: Run diff test suite on annotated code
+        run: uv run pytest test/diff/run_test.py
+
+      - name: type-check generated code
+        # each example has its own copy of the library modules, so check them one by one
+        run: |
+          status=0
+          for d in examples/python_out/*/code; do uv run mypy "$d" || status=1; done
+          exit $status
+
+      - name: type-check generated code with ty
+        # ty finds the casts that are there for mypy redundant
+        run: |
+          status=0
+          for d in examples/python_out/*/code; do
+            uv run ty check --python-version 3.12 --no-progress --ignore redundant-cast --extra-search-path "$d" "$d" || status=1
+          done
+          exit $status
 
   oracle:
     runs-on: ubuntu-latest
@@ -73,6 +103,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
+      # -o python_type_annotations needs the option declared in etc/options, which Isabelle
+      # only reads for a registered component; the Python session must be built after this,
+      # or it is compiled without the option and -o has no effect
+      - name: register component
+        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
+
       - name: extract Python code
         run: ISABELLE_PYTHON=1 /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Slow
 
@@ -80,4 +116,24 @@ jobs:
         run: |
           uv run python -m py_compile test/slow/generated_basic/*.py
           uv run python -m py_compile test/slow/generated_full/*.py
+
+      - name: import check generated code
+        run: uv run pytest test/slow/run_test.py --tb=line
+
+      - name: extract Python code with type annotations
+        run: |
+          /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Test_Slow
+          grep -q "from __future__ import annotations" test/slow/generated_full/Nat.py
+
+      - name: type-check generated code
+        run: |
+          uv run mypy test/slow/generated_basic
+          uv run mypy test/slow/generated_full
+
+      - name: type-check generated code with ty
+        # ty finds the casts that are there for mypy redundant
+        run: |
+          for d in test/slow/generated_basic test/slow/generated_full; do
+            uv run ty check --python-version 3.12 --no-progress --ignore redundant-cast --extra-search-path "$d" "$d"
+          done
           

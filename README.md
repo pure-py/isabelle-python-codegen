@@ -50,8 +50,35 @@ per line in `etc/python_reserved_words`: the keywords, soft keywords and
 builtins of the Python version in `.python-version`. Lines starting with `#`
 are comments. `Python.thy` reserves every name in the file, together with the
 names that the prelude of each generated module binds (`dataclass`, `Any`,
-`Callable`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
+`Callable`, `Never`, `cast`, `functools`, `_abort`, `_cached`, `_unimplemented`;
+`prelude_names` in
 `code_python.ML`).
+
+### Values and modules
+
+A value is printed as a cached function without arguments, and its uses call
+it, so it is evaluated once, when it is first used:
+
+```python
+@functools.cache
+def num_of_nat():
+    return (Fun.comp(Arith.num_of_integer, lambda a: a))
+```
+
+Code that uses the generated modules therefore calls a value too
+(`Example_nat.nat_sum()`). An alias of a function (`f_int = f`), or a value
+whose type is a function of two or more arguments, is printed as an ordinary
+function instead.
+
+Importing a module thus evaluates nothing, which matters for two reasons. Each
+theory becomes a Python module (unless `code_identifier` or the `module_name` of
+`export_code` says otherwise), and code equations may use constants of later
+theories, e.g. `Num.num_of_nat` is implemented by `Code_Numeral.num_of_integer`.
+So the modules can import each other: in the HOL library, about 50 modules form
+one import cycle. Python allows this as long as no module reads an attribute of
+a module that is still being imported, which evaluating a value could do. And a
+value that calls a constant without code (`_abort`) raises when it is used,
+rather than when its module is imported.
 
 A definition, class or datatype with a reserved name gets a trailing
 underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
@@ -96,6 +123,156 @@ one) is left recursive: Python closures capture variables, not values, so a
 closure created in one iteration would see the next iteration's rebinding.
 `examples/Example_tail_calls.thy` shows both outputs side by side.
 
+### Type annotations
+
+The option `python_type_annotations` (off by default) is the start of type
+annotations in the generated code, in the PEP 695 syntax of Python 3.12. It is
+work in progress: it covers datatypes, functions, values and type classes, but
+not yet local definitions such as hoisted lambdas. Each constructor becomes a generic dataclass with typed
+fields, over the type parameters these fields use, and the datatype becomes the
+union of its constructors:
+
+```python
+@dataclass(frozen=True)
+class None_:
+    pass
+@dataclass(frozen=True)
+class Some[A]:
+    a: A
+type option[A] = None_ | Some[A]
+```
+
+A function gets annotated parameters and a return type, and declares the type
+variables of its type as PEP 695 type parameters. Since function values are
+applied one argument at a time, a function-typed parameter or return value has
+a curried type:
+
+```python
+def px[A](x0: point_ext[A]) -> int: ...
+def apply_twice(f: Callable[[int], int], x: int) -> int: ...
+@_cached
+def empty_list[A]() -> list[A]: ...
+```
+
+A value is cached with `_cached`, which the prelude defines on top of
+`functools.cache`: `functools.cache` would hide the type parameters of
+`empty_list` from a type checker.
+
+A type class becomes a generic dataclass over its type variable. Methods are
+called with all their arguments at once, so their fields have uncurried types.
+An instance returns the class at its type, and a function with a sort
+constraint takes a dictionary of that class (a tuple of dictionaries, for a
+sort with several classes):
+
+```python
+@dataclass(frozen=True)
+class ord_[A]:
+    less_eq: Callable[[A, A], bool]
+    less: Callable[[A, A], bool]
+
+def ord_list[A](a_dict: ord_[A]) -> ord_[list[A]]: ...
+def announce[A](a_dict: describable[A], x: A) -> str: ...
+```
+
+A type that has no Python name is annotated as `Any`: a type without a
+printing whose datatype has no constructors (for example one with an abstract
+representation) is not part of the generated code.
+
+Some printing differs from the output without the option, so that a type
+checker accepts the code. A `match` keeps its final `case _:` arm that raises an
+error, unless its last pattern is a variable or a wildcard: a type checker
+cannot tell that the other patterns are exhaustive, and would otherwise report
+a missing return.
+
+Set the option like `python_tail_calls`:
+
+```bash
+isabelle build -o python_type_annotations -d . -e Python_Examples
+```
+
+Changing the option does not rebuild an up-to-date session, so add `-c` to
+rebuild the session when switching it on or off. `-o` only works when the
+directory is registered as an Isabelle component (`isabelle components -u .`)
+before the `Python` session is built, since Isabelle reads `etc/options` only
+for a component. `make typecheck-diff` builds
+the examples with the option, compares them with their golden files (see the
+`diff` suite below) and runs mypy and ty over them, one example directory at a time
+(each has its own copy of the library modules).
+
+A function without code, which always aborts, returns `Never`. A lambda becomes
+a local function with annotated parameters, and so does a partial application:
+
+```python
+@_cached
+def add_one() -> Callable[[int], int]:
+    def lam(a: int) -> int:
+        return (add2(1, a))
+    return (lam)
+```
+
+A variable that the branches of an `if` or the arms of a `match` assign is
+declared with its type first, and the subject of a `match` is annotated too;
+otherwise a type checker would take the constructor of the first assignment
+(`Inl`) for the type of the variable, and reject the others:
+
+```python
+x: Sum_Type.sum_[Nat.nat, Nat.nat]
+if (Int.less_eq_int(Int.zero_int_(), i)):
+    x = (Sum_Type.Inl(Int.nat(i)))
+else:
+    x = (Sum_Type.Inr(...))
+```
+
+These local definitions, and the hoisted lambdas, get names that differ within
+a definition, since mypy rejects one name declared at different types, even in
+different arms of a `match`.
+
+Mypy infers the parameter types of a lambda passed to a generic function by
+checking its body again for each candidate, so nested lambdas take exponential
+time: the generators of `Quickcheck_Random` took it hours to check.
+
+A type checker infers a type parameter of a generic function from a
+constructor argument as the constructor's class: in `fold(f, xs, Nil())`, mypy
+takes `Nil` for `B` rather than `list_[A]`, which then does not fit `f`; and from
+a generic value such as `top_set()` it infers `set_[Never]`. Such an argument for
+a parameter declared with a bare type variable is therefore cast to the type at
+the call:
+
+```python
+return (fold(lam, xs, cast(list_[A], Nil())))
+```
+
+A constructor printed as a Python literal, such as a list with `Python_Setup`,
+is cast for any parameter whose declared type has a type variable, since
+Python's lists are invariant: `[Leaf()]` is a `list[Leaf]`, not a
+`list[tree[int]]` (`examples/Example_annotation_edges.thy`).
+
+No cast is printed where a type checker infers the type exactly anyway: for a
+variable or a call, a literal such as `(x, y)`, `[x, *xs]`, `True` or `2`, or
+the only constructor of a datatype. `mypy --strict` then finds one redundant
+cast in the slow suite.
+
+Likewise, a superclass instance whose type parameter no dictionary argument
+determines (`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) is cast to its
+type in the instance that uses it. A generic function passed as an argument
+(`Fun.comp(f, List.rev)`) becomes a local function at its instantiated type,
+as a partial application does, since mypy cannot always infer the type
+parameters of one generic function passed to another. And a `case` on `unit`
+with one arm (`case trace s of () => t`) evaluates its subject as a statement,
+since mypy rejects binding the result of a function that returns `None`.
+
+Mypy accepts the code generated for the slow suite (`generated_basic` and
+`generated_full`) and checks each in about a second; `make typecheck-slow`
+builds it with the option and runs mypy and ty, as CI does.
+
+[ty](https://github.com/astral-sh/ty) accepts the same code; it is pinned to
+the version tested, as it is still in beta. It infers a literal such as `[]`
+from the type it is expected to have, so it finds the casts that mypy needs
+redundant, and runs with `--ignore redundant-cast`. Pyright also accepts the
+examples, but takes too long on the slow suite: it is exponential in the depth
+of nested calls of generic constructors, which the Quickcheck generators and
+`term_of` functions are full of.
+
 ## Running the tests
 
 This repository comes with three test suites:
@@ -123,14 +300,21 @@ with `Python.Python_Setup`. Unfortunately, we can currently not use Isabelle's
 isabelle build -d . -e Python_Test_Slow
 uv run python -m py_compile test/slow/generated_basic/*.py
 uv run python -m py_compile test/slow/generated_full/*.py
+uv run pytest test/slow/run_test.py
 ```
+
+`run_test.py` imports every generated module in a fresh interpreter; the
+modules that are known not to import are listed in `KNOWN_FAILURES` there.
 
 - **diff**
 
 During the development of this code generator, different Isabelle features were
 tested in isolation in different example theories under `examples/`. To see if
 changes to the backend result in changes to the extracted code, the `diff` test
-suite holds golden reference files under `test/diff/golden/`.
+suite holds golden reference files under `test/diff/golden/`, and those of the
+output with type annotations under `test/diff/golden_annotated/`. The test and
+`reseed_goldens.py` tell the two apart by the `from __future__ import
+annotations` that starts every annotated module.
 
 ```bash
 isabelle build -d . -e Python_Examples
@@ -145,6 +329,10 @@ isabelle build -d . -e Python_Examples
 uv run python test/diff/reseed_goldens.py
 ```
 
+and those of the annotated output by the same commands with `-c -o
+python_type_annotations` added to the build (`make reseed-annotated`). A change
+to the backend usually changes both sets.
+
 ## Known limitations
 
 - No support yet for `real`, `rat`, or other numeric types beyond
@@ -154,6 +342,7 @@ which maps to an identity in Python causes an `undefined name error`. To
 circumvent this, such a symbol must be declared with
 `Code_Python.add_transparent_wrapper_sym`. For an example, look at
 `examples/Example_transparent_wrapper.thy`.
+
 
 ## License
 

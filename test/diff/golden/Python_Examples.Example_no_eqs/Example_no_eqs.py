@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import HOL
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-uses_undefined = (HOL.undefined())
+@functools.cache
+def uses_undefined():
+    return (HOL.undefined())

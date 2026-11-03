@@ -16,6 +16,14 @@ Run with:
 
     pytest test/diff/run_test.py -v
 
+Output built with type annotations,
+
+    isabelle build -d . -c -o python_type_annotations -e Python_Examples
+
+is compared against test/diff/golden_annotated/ instead of test/diff/golden/:
+the test tells the two apart by the `from __future__ import annotations`
+that starts every annotated module.
+
 Accepting a new baseline after a change to a *.thy file:
   1. Build normally (isabelle build -d . -e Python_Examples).
   2. Run this test. Every failure names the exact `cp` command to accept
@@ -41,7 +49,22 @@ THIS_DIR = Path(__file__).resolve().parent
 # levels up, as a sibling of test/, not under test/diff/ itself.
 PROJECT_ROOT = THIS_DIR.parent.parent
 PYTHON_OUT_ROOT = PROJECT_ROOT / "examples" / "python_out"
-GOLDEN_ROOT = THIS_DIR / "golden"
+
+
+# Output built with the python_type_annotations option has its own golden files.
+# Annotated modules start with this import (see print_one_module in code_python.ML).
+ANNOTATED_MARKER = "from __future__ import annotations"
+
+
+def _golden_root(generated_paths):
+    """test/diff/golden_annotated/ for annotated output, test/diff/golden/ otherwise."""
+    annotated = {ANNOTATED_MARKER in p.read_text().splitlines()[:5] for p in generated_paths}
+    if annotated == {True, False}:
+        raise SystemExit(
+            f"{PYTHON_OUT_ROOT} mixes annotated and unannotated modules -- rebuild "
+            "Python_Examples with -c, with or without -o python_type_annotations."
+        )
+    return THIS_DIR / ("golden_annotated" if annotated == {True} else "golden")
  
  
 def _canonical_key(rel_parts):
@@ -74,6 +97,8 @@ if not _generated:
         "`isabelle build -d . -e Python_Examples` first.",
         allow_module_level=True,
     )
+
+GOLDEN_ROOT = _golden_root(_generated.values())
  
  
 def _all_relative_paths():
@@ -92,7 +117,7 @@ def test_example_matches_golden(rel_path):
  
     if generated_path is None:
         pytest.fail(
-            f"golden/{rel_path} exists but nothing at that path was "
+            f"{GOLDEN_ROOT.name}/{rel_path} exists but nothing at that path was "
             f"generated under {PYTHON_OUT_ROOT} this build -- the theory "
             "was renamed/removed, or this was an auxiliary module (like "
             "HOL.py) that a different example no longer pulls in. Delete "
@@ -111,7 +136,7 @@ def test_example_matches_golden(rel_path):
     if current != golden:
         diff = "\n".join(difflib.unified_diff(
             golden.splitlines(), current.splitlines(),
-            fromfile=f"golden/{rel_path} (expected)",
+            fromfile=f"{GOLDEN_ROOT.name}/{rel_path} (expected)",
             tofile=f"generated {rel_path} (actual)",
             lineterm="",
         ))

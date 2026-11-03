@@ -2,8 +2,8 @@ theory Quick_Test_Tail_Calls
   imports Main "Python.Python_Setup"
 begin
 
-text \<open>Runtime checks for python_tail_calls: the values below are computed at import time and
-  recurse far deeper than Python's default limit of 1000 frames, unless printed as loops.\<close>
+text \<open>Runtime checks for python_tail_calls: the values below are computed when the tests use them
+  and recurse far deeper than Python's default limit of 1000 frames, unless printed as loops.\<close>
 
 declare [[python_tail_calls]]
 

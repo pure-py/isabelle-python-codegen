@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -19,7 +20,9 @@ def peel_positive_head(x0):
         case _:
             raise RuntimeError("match failed")
 
-peel_test = (peel_positive_head([max(0, 3), max(0, 4), max(0, 5)]))
+@functools.cache
+def peel_test():
+    return (peel_positive_head([max(0, 3), max(0, 4), max(0, 5)]))
 
 def nat_minus2(v, n):
     if ((v == 0)):
@@ -39,6 +42,10 @@ def classify_small(uu):
         else:
             return (max(0, 2))
 
-classify_test = ((classify_small(0), ((classify_small(1), classify_small((max(0, 7)))))))
+@functools.cache
+def classify_test():
+    return ((classify_small(0), ((classify_small(1), classify_small((max(0, 7)))))))
 
-nat_minus2_test = (nat_minus2((max(0, 5)), (max(0, 3))))
+@functools.cache
+def nat_minus2_test():
+    return (nat_minus2((max(0, 5)), (max(0, 3))))

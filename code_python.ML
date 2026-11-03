@@ -6,6 +6,7 @@ sig
   val enable_native_encoding: string -> theory -> theory
   val print_python_string: string -> string
   val tail_calls: bool Config.T
+  val type_annotations: bool Config.T
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -26,6 +27,13 @@ val tail_calls =
   if can Options.default_typ "python_tail_calls"
   then Attrib.setup_option_bool ("python_tail_calls", \<^here>)
   else Attrib.setup_config_bool \<^binding>\<open>python_tail_calls\<close> (K false);
+
+(* Print type annotations (PEP 484, with the PEP 695 generics of Python 3.12). Off by default,
+   set up like python_tail_calls *)
+val type_annotations =
+  if can Options.default_typ "python_type_annotations"
+  then Attrib.setup_option_bool ("python_type_annotations", \<^here>)
+  else Attrib.setup_config_bool \<^binding>\<open>python_type_annotations\<close> (K false);
 
 structure Transparent_Wrapper_Data = Theory_Data
 (
@@ -70,7 +78,8 @@ fun use_native_encoding thy name = Symtab.defined (Native_Encoding_Data.get thy)
 
 (* Names bound by the prelude of every generated module; the keywords and builtins of
    Python are reserved by Python.thy, from etc/python_reserved_words *)
-val prelude_names = ["dataclass", "Any", "Callable", "_unimplemented", "_abort", "functools"];
+val prelude_names = ["dataclass", "Any", "Callable", "Never", "cast", "_unimplemented", "_abort",
+  "_cached", "functools"];
 
 type eqtn = { 
   patterns: iterm list,       (* left hand side pattern list *)
@@ -108,6 +117,7 @@ datatype python_stmt =
     (* A typeclass definition (turns into a `@dataclass with one Callable
        field per method, and one field per direct superclass) *)
   | Class of { 
+      var: vname,                     (* the type variable of the class *)
       super: (class * class) list,    (* super classes *)
       methods: (string * itype) list  (* class methods *)
     }
@@ -163,19 +173,57 @@ fun invent_names vars prefix n =
  * arguments:
  *   undefineds: intentionally unimplemented symbols, turn into `_abort(...)`
  *   const_syntax: custom registered code_printing declarations for constants
+ *   tyco_syntax: custom registered code_printing declarations for type constructors
+ *   tyvar_ctxt: names a type variable must not take (everything the module binds)
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
+ *   is_value: true for a value definition (a nullary constant without dictionaries)
+ *   is_cached_value: true for a value, which is printed as a cached function without
+ *     arguments (see serialize_python)
  *   is_constr: true for a datatype constructor without a printing
+ *   generic_dom: the parameter types of a function as it is declared, before its type
+ *     variables are instantiated (empty for other symbols)
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
+ *   lam_tyvars: the type variables that the annotations of hoisted lambdas (see anf_term)
+ *     may name, those of the generic function they are in; NONE outside of one, where they
+ *     print as Any
  *)
-fun print_python_stmt undefineds const_syntax reserved args_num
-    is_class_param is_value is_constr ctxt deresolve =
+fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
+    is_class_param is_value is_cached_value is_constr generic_dom ctxt deresolve lam_tyvars =
   let
     fun deresolve_const name = deresolve (Constant name);
+    (* names of the local definitions of this statement so far, see invent_local *)
+    val local_names = Unsynchronized.ref ([] : string list);
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_inst name = deresolve (Class_Instance name);
+
+    (* Python names of type variables: capitalised ('a -> A), and distinct from every
+       name the module binds, as a PEP 695 type parameter shadows them in the body
+       of the function or class that declares it *)
+    fun intro_tyvars vs =
+      let
+        val capitalize = implode o nth_map 0 Symbol.to_ascii_upper o Symbol.explode
+        val (names, ctxt') = fold_map (Name.variant o capitalize) vs tyvar_ctxt
+      in (fold2 (curry Symtab.update) vs names Symtab.empty, ctxt') end;
+
+    (* A function value is applied one argument at a time, so its type is curried:
+       a => b => c is Callable[[a], Callable[[b], c]]. A type without a Python name
+       has a syntax that prints Any (typ_syntax in serialize_python). *)
+    fun print_typ tyvars (ITyVar v) = Pretty.str (lookup_var tyvars v)
+      | print_typ tyvars ("fun" `%% [ty1, ty2]) =
+          Pretty.block [Pretty.str "Callable[[", print_typ tyvars ty1, Pretty.str "], ",
+            print_typ tyvars ty2, Pretty.str "]"]
+      | print_typ tyvars (tyco `%% tys) =
+          (case tyco_syntax tyco of
+            SOME (_, print) => print (K (print_typ tyvars)) NOBR tys
+          | NONE =>
+              (case try deresolve (Type_Constructor tyco) of
+                SOME name => print_typ_app (Pretty.str name) (map (print_typ tyvars) tys)
+              | NONE => Pretty.str "Any"))
+    and print_typ_app head [] = head
+      | print_typ_app head ps = Pretty.block [head, Pretty.enum "," "[" "]" ps];
 
     (* Attribute name of a class dataclass field (method or superclass).
        Declaration, construction and projection must all use this, as
@@ -188,6 +236,11 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     (* extract the theory from the context *)
     val thy = Proof_Context.theory_of ctxt
+
+    val annotate = Config.get ctxt type_annotations
+    (* With type annotations, functools.cache would hide the type parameters of a function
+       from a type checker; _cached, defined in the prelude, is typed as the identity *)
+    val cache_decorator = Pretty.str (if annotate then "@_cached" else "@functools.cache");
     
     (* Python introduced structural pattern matching in version 3.10. 
      * We can therefore use things like capture patterns, wildcards, and
@@ -322,7 +375,19 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               else is_sole_constr sym andalso forall exhaustive args
           | NONE => false)
 
-    fun is_trivial_pattern _ t = exhaustive t
+    (* Whether a match needs no `case _` arm after a last arm with the patterns ts. Python
+       needs none after an exhaustive arm. A type checker however only sees that an arm is
+       exhaustive if it knows the type of the subject, which it does not for an unannotated
+       lambda, and otherwise infers that the function may fall off the match and return
+       None. With type annotations, only an arm that matches anything ends the match: a
+       capture or a wildcard, after which Python forbids further arms. *)
+    fun ends_match vars ts =
+      if annotate
+      then (case pattern_of_iterms vars ts of
+          ([PCapture _], [], _, _) => true
+        | ([PWild], [], _, _) => true
+        | _ => false)
+      else forall exhaustive ts
 
     fun print_python_pattern (PCapture v) = Pretty.str v
       | print_python_pattern PWild = Pretty.str "_"
@@ -337,6 +402,40 @@ fun print_python_stmt undefineds const_syntax reserved args_num
       | print_python_pattern (PList (ps, SOME rest)) =
           Pretty.enum "," "[" "]" (map print_python_pattern ps @ [Pretty.str ("*" ^ rest)]);
     
+    (* The annotation of a local definition: the type variables are those of the generic
+       function it is in (lam_tyvars), and Any outside of one *)
+    val local_tyvars = case lam_tyvars of
+        SOME vs => intro_tyvars vs
+      | NONE => (Symtab.empty, tyvar_ctxt)
+    fun print_local_typ ty = case lam_tyvars of
+        SOME _ => print_typ local_tyvars ty
+      | NONE =>
+          let
+            fun add_tyvars (ITyVar v) = insert (op =) v
+              | add_tyvars (_ `%% tys) = fold add_tyvars tys
+          in print_typ (fold (fn v => Symtab.update (v, "Any")) (add_tyvars ty [])
+            Symtab.empty, tyvar_ctxt) ty end
+
+    (* The type of a term, where a constant or a lambda determines it: a case has the
+       result type of its case combinator *)
+    fun type_of_term (ICase { primitive, ... }) = type_of_term primitive
+      | type_of_term ((_, ty) `|=> (_, rty)) = SOME ([ty] `--> rty)
+      | type_of_term t = (case Code_Thingol.unfold_const_app t of
+          SOME ({ dom, range, ... }, ts) =>
+            if length ts <= length dom then SOME (drop (length ts) dom `--> range) else NONE
+        | NONE => NONE)
+
+    (* A fresh name for a local definition. Mypy rejects definitions of one name at
+       different types, even in different arms of a match, so with type annotations the
+       names of local definitions differ within a statement. *)
+    fun invent_local vars prefix =
+      if annotate
+      then
+        let val (name, vars') = invent_name (fst vars, fold Name.declare (! local_names) (snd vars))
+          prefix
+        in (local_names := name :: ! local_names; (name, vars')) end
+      else invent_name vars prefix
+
     fun print_guard _ _ [] = NONE
       | print_guard some_thm vars guards =
         guards
@@ -375,32 +474,87 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             | _ => NONE)
       | _ => NONE
 
-    and anf_term vars (t as IConst _) = ([], vars, t)
+    (* With type annotations, a partial application that would be printed as a lambda
+       (see print_app_expr) is eta-expanded before hoisting, so that it becomes an
+       annotated def as well *)
+    and eta_expansion t =
+      if not annotate then NONE
+      else case Code_Thingol.unfold_const_app t of
+        SOME (app as ({ sym = sym as Constant name, dictss, typargs, ... }, ts)) =>
+          if member (op =) undefineds name then NONE
+          else
+            let
+              val arity = case const_syntax name of
+                  SOME (_, Plain_printer _) => NONE
+                | SOME (wanted, _) => SOME wanted
+                | NONE =>
+                    (* a unary function is printed by name, unless it is generic: a type
+                       checker cannot always infer the type arguments of a generic function
+                       passed to another generic one *)
+                    let val l = args_num sym
+                    in
+                      if null ts andalso forall null dictss andalso l = 1 andalso null typargs
+                      then NONE else SOME l
+                    end
+            in case arity of
+                SOME l => if length ts < l
+                  then SOME (Code_Thingol.saturated_application l app) else NONE
+              | NONE => NONE
+            end
+      | _ => NONE
+
+    and anf_term vars (t as IConst _) =
+          (case eta_expansion t of
+            SOME t' => anf_term vars t'
+          | NONE => ([], vars, t))
       | anf_term vars (t as IVar _) = ([], vars, t)
       | anf_term vars (t as t1 `$ t2) =
           (case short_circuit t of
             SOME (cond, t_branch, e_branch) =>
               let
                 val (bc, vars1, cond') = anf_term vars cond;
-                val (x, vars2) = invent_name vars1 "x";
+                val (x, vars2) = invent_local vars1 "x";
               in (bc @ [PIf (x, cond', t_branch, e_branch)], vars2, IVar (SOME x)) end
           | NONE =>
-              let
-                val (b1, vars1, t1') = anf_term vars t1;
-                val (b2, vars2, t2') = anf_term vars1 t2;
-              in (b1 @ b2, vars2, t1' `$ t2') end)
+              (case (eta_expansion t, Code_Thingol.unfold_const_app t) of
+                (SOME t', _) => anf_term vars t'
+              | (NONE, SOME (const, ts)) =>
+                  (* the arguments of a constant; its partial applications that make
+                     up the head are not terms of their own *)
+                  let
+                    val (bs, vars', ts') = fold (fn t => fn (bs, vs, ts') =>
+                        let val (b, vs', t') = anf_term vs t
+                        in (bs @ b, vs', ts' @ [t']) end)
+                      ts ([], vars, [])
+                  in (bs, vars', IConst const `$$ ts') end
+              | (NONE, NONE) =>
+                  let
+                    val (b1, vars1, t1') = anf_term vars t1;
+                    val (b2, vars2, t2') = anf_term vars1 t2;
+                  in (b1 @ b2, vars2, t1' `$ t2') end))
+      (* With type annotations, every lambda becomes a def, whose annotations spare a
+         type checker inferring the types of its parameters. Mypy infers those of a
+         lambda passed to a generic function by checking it once per candidate type, so
+         nested ones take exponential time: the generators of Quickcheck_Random take
+         hours to check. *)
       | anf_term vars (t as (_, _) `|=> (_, _)) =
-          if is_stmt_free t
+          if is_stmt_free t andalso not annotate
           then ([], vars, t)
           else
             let
-              fun strip_lambdas vs ((param, _) `|=> (body, _)) =
+              fun strip_lambdas vs ((param, ty) `|=> (body, body_ty)) =
                     let
                       val vs' = intro_vars (map_filter I [param]) vs
-                      val (ps, vs'', body') = strip_lambdas vs' body
-                    in (param :: ps, vs'', body') end
-                | strip_lambdas vs body = ([], vs, body)
-              val (params, vars1, body) = strip_lambdas vars t
+                      val (ps, vs'', body', range_ty) = strip_lambdas vs' body
+                    in ((param, ty) :: ps, vs'', body',
+                      case range_ty of NONE => SOME body_ty | some => some) end
+                | strip_lambdas vs body = ([], vs, body, NONE)
+              val (typed_params, vars1, body, range_ty) = strip_lambdas vars t
+              val params = map fst typed_params
+              (* the annotations of the def taking the i-th parameter *)
+              fun def_typs i =
+                let val (_, rest) = chop i (map snd typed_params)
+                in (print_local_typ (hd rest), print_local_typ (tl rest `--> the range_ty)) end
               val (param_prettys, vars2) = fold_map
                 (fn NONE => (fn vs => let val (n, vs') = invent_name vs "unused"
                       in (Pretty.str n, vs') end)
@@ -408,35 +562,42 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 params vars1
               (* Function values are applied one argument at a time (f(x)(y)), so a
                  multi-parameter lambda becomes nested one-parameter defs. *)
-              fun def_head vs fname param =
-                Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
+              fun def_head vs fname param i =
+                if annotate
+                then
+                  let val (param_typ, ret_typ) = def_typs i
+                  in Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
+                    Pretty.str "(", param, Pretty.str ": ", param_typ, Pretty.str ") -> ",
+                    ret_typ, Pretty.str ":"]
+                  end
+                else Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
                   Pretty.str "(", param, Pretty.str "):"]
-              fun curried_defs vs [param] =
+              fun curried_defs vs i [param] =
                     let
-                      val (fname, vs') = invent_name vs "lam"
+                      val (fname, vs') = invent_local vs "lam"
                       val body_pretty = print_tail_expr NONE
                         (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
                           print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
                         vs' body
-                    in (Pretty.chunks [def_head vs' fname param, indent_block 4 body_pretty],
+                    in (Pretty.chunks [def_head vs' fname param i, indent_block 4 body_pretty],
                       fname, vs') end
-                | curried_defs vs (param :: params') =
+                | curried_defs vs i (param :: params') =
                     let
-                      val (fname, vs1) = invent_name vs "lam"
-                      val (inner, inner_name, vs2) = curried_defs vs1 params'
+                      val (fname, vs1) = invent_local vs "lam"
+                      val (inner, inner_name, vs2) = curried_defs vs1 (i + 1) params'
                       val inner_block = Pretty.chunks [inner,
                         Pretty.str ("return " ^ lookup_var vs2 inner_name)]
-                    in (Pretty.chunks [def_head vs2 fname param, indent_block 4 inner_block],
+                    in (Pretty.chunks [def_head vs2 fname param i, indent_block 4 inner_block],
                       fname, vs2) end
-                | curried_defs _ [] = error "internal error: hoisted lambda without parameters"
-              val (def_stmt, fname, vars3) = curried_defs vars2 param_prettys
+                | curried_defs _ _ [] = error "internal error: hoisted lambda without parameters"
+              val (def_stmt, fname, vars3) = curried_defs vars2 0 param_prettys
               (* the lambda's parameters are local to the def: keep the outer
                  bindings (only adding the def's name), but keep all names
                  reserved so later fresh names cannot clash *)
               val vars4 = (Symtab.update (fname, lookup_var vars3 fname) (fst vars), snd vars3)
               in ([PRaw def_stmt], vars4, IVar (SOME fname)) end
       | anf_term vars (t as ICase _) =
-          let val (x, vars') = invent_name vars "x"
+          let val (x, vars') = invent_local vars "x"
           in ([PBind (x, t)], vars', IVar (SOME x)) end
 
     and print_if_then_else some_thm finish vars target t_branch e_branch =
@@ -464,10 +625,26 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           end
       | get_if_then_else _ = NONE
 
-    and print_tail_expr some_thm finish vars (ICase { term = target, clauses, ... }) =
+    (* With type annotations, a case on unit with one arm (`case trace s of () => t`)
+       evaluates its subject as a statement and continues with the arm: unit is None,
+       and a type checker rejects binding the result of a function that returns None *)
+    and print_tail_expr some_thm finish vars
+          (ICase { term = target, typ = "Product_Type.unit" `%% [], clauses = [(pat, t)], ... }) =
+          if annotate andalso (case pat of
+              IVar NONE => true
+            | IConst { sym = Constant "Product_Type.Unity", ... } => true
+            | _ => false)
+          then
+            let val (bindings, vars', target') = anf_term vars target
+            in Pretty.chunks (map (print_preamble some_thm vars') bindings @
+              [print_python_expr const_syntax some_thm vars' NOBR target',
+               print_tail_expr some_thm finish vars' t])
+            end
+          else print_case_block some_thm finish vars target ("Product_Type.unit" `%% []) [(pat, t)]
+      | print_tail_expr some_thm finish vars (ICase { term = target, typ, clauses, ... }) =
         (case get_if_then_else clauses of
           SOME (t_branch, e_branch) => print_if_then_else some_thm finish vars target t_branch e_branch
-        | NONE => print_case_block some_thm finish vars target clauses)
+        | NONE => print_case_block some_thm finish vars target typ clauses)
       | print_tail_expr some_thm finish vars t =
           let val (bindings, vars', t') = anf_term vars t
           in Pretty.chunks (map (print_preamble some_thm vars') bindings @ [finish vars' t']) end
@@ -478,7 +655,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
         vars t
 
-    and print_preamble some_thm vars (PBind (name, t)) = print_binding some_thm vars (name, t)
+    (* With type annotations, the variable that the arms of a case assign is declared
+       first, or a type checker would take the type of the first assignment (one
+       constructor) for all of them *)
+    and print_preamble some_thm vars (PBind (name, t)) =
+          (case (annotate, type_of_term t) of
+            (true, SOME ty) => Pretty.chunks
+              [Pretty.block [Pretty.str name, Pretty.str ": ", print_local_typ ty],
+               print_binding some_thm vars (name, t)]
+          | _ => print_binding some_thm vars (name, t))
       | print_preamble _ _ (PRaw p) = p
       | print_preamble some_thm vars (PIf (name, cond, t_branch, e_branch)) =
           let
@@ -494,11 +679,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
               indent_block 4 (branch e_branch)]
           end
 
-    and print_case_block some_thm finish vars target clauses =
+    and print_case_block some_thm finish vars target typ clauses =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
-        val (tvar, vars0) = invent_name vars1 "target"
-        val assign = Pretty.block [Pretty.str tvar, Pretty.str " = (",
+        val (tvar, vars0) = invent_local vars1 "target"
+        val tvar_decl = if annotate
+          then Pretty.block [Pretty.str tvar, Pretty.str ": ", print_local_typ typ]
+          else Pretty.str tvar
+        val assign = Pretty.block [tvar_decl, Pretty.str " = (",
           print_python_expr const_syntax some_thm vars1 NOBR target', Pretty.str ")"];
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =
@@ -510,7 +698,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
            pattern is exhaustive on its own *)
         val last_clause_pattern = case rev clauses of (p, _) :: _ => SOME p | [] => NONE
         val already_exhaustive = case last_clause_pattern of
-            SOME p => is_trivial_pattern vars0 p
+            SOME p => ends_match vars0 [p]
           | NONE => false
         val arms = map one_arm clauses @ (if already_exhaustive then [] else [fallthrough_arm])
       in
@@ -529,8 +717,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           SOME app => print_app const_syntax some_thm vars fxy app
           (* If not, then this might be a lambda application or similar *)
         | NONE =>
-          applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
-            (print_python_expr const_syntax some_thm vars BR t1) [t2])
+          let
+            (* an applied lambda needs brackets, or it would apply its body:
+               `lambda x: t(u)` instead of `(lambda x: t)(u)` *)
+            val head = case t1 of
+                _ `|=> _ => Pretty.enclose "(" ")"
+                  [print_python_expr const_syntax some_thm vars NOBR t1]
+              | _ => print_python_expr const_syntax some_thm vars BR t1
+          in applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy head [t2] end)
       | IVar (SOME v) => Pretty.str (lookup_var vars v)
       | IVar NONE => error "can't return a variable with no name"
       | (params, _) `|=> (t', _) =>
@@ -571,14 +765,65 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
     and print_dicts some_thm vars = tuplify (print_dict some_thm vars)
 
-    and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
+    and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, dom, ...}, ts)) =
       let
         val l = args_num sym
+        (* With type annotations, a constructor argument for a parameter whose declared type
+           is a type variable is cast to the instantiated type: a type checker would take the
+           constructor's own class for the type variable (`fold(f, xs, Nil())` makes B Nil
+           rather than list_[A]), which then does not fit the other arguments. So is a
+           generic value (`fold(f, xs, top_set())`), whose type parameters it would take
+           for Never. A constructor printed as a Python literal is cast for any parameter
+           whose declared type has a type variable: Python's lists are invariant, so
+           `first_or([Leaf()], f, t)` does not fit a list[tree[int]] either. *)
+        val declared_dom = if annotate then generic_dom sym else []
+        fun is_constr_app t = case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = sym' as Constant c, typargs, ... }, _) =>
+              is_some (Code.get_type_of_constr_or_abstr thy c)
+              orelse (is_cached_value sym' andalso not (null typargs))
+          | _ => false
+        fun is_literal_constr_app t = case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = Constant c, ... }, _) =>
+              is_some (Code.get_type_of_constr_or_abstr thy c) andalso is_some (const_syntax c)
+          | _ => false
+        fun has_tyvar (ITyVar _) = true
+          | has_tyvar (_ `%% tys) = exists has_tyvar tys
+        (* An argument for which a type checker infers exactly its type needs no cast. A
+           variable, a call or a hoisted lambda has its declared type. So has a constructor
+           application if its class is the type (a constructor printed as a Python literal,
+           or the only one of its datatype), and its arguments determine the type variables
+           of its result: (x, y), [x, *xs], True or None, but not [] or Nil(). And any term
+           of a Python type without parameters is exact, such as the numeral 2 :: int. *)
+        fun determined c =
+          let val (dom_tys, range_ty) = strip_type (Sign.the_const_type thy c)
+          in subset (op =) (Term.add_tvarsT range_ty [], fold Term.add_tvarsT dom_tys []) end
+        fun is_python_scalar (tyco `%% []) = is_some (tyco_syntax tyco)
+          | is_python_scalar _ = false
+        fun is_exact t =
+          (case type_of_term t of SOME ty => is_python_scalar ty | NONE => false) orelse
+          (case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = sym' as Constant c, typargs, ... }, ts) =>
+              if is_some (Code.get_type_of_constr_or_abstr thy c)
+              then (is_some (const_syntax c) orelse is_sole_constr sym')
+                andalso determined c andalso forall is_exact ts
+              else not (is_cached_value sym' andalso not (null typargs))
+                andalso (null typargs orelse forall is_exact ts)
+          | _ => true)
+        fun needs_cast declared t = not (is_exact t) andalso (case declared of
+            ITyVar _ => is_constr_app t
+          | _ => has_tyvar declared andalso is_literal_constr_app t)
+        fun print_arg i t =
+          if i < length declared_dom andalso i < length dom
+            andalso needs_cast (nth declared_dom i) t
+          then Pretty.block [Pretty.str "cast(", print_local_typ (nth dom i), Pretty.str ", ",
+            print_python_expr const_syntax some_thm vars NOBR t, Pretty.str ")"]
+          else print_python_expr const_syntax some_thm vars BR t
+        (* a value is referenced by calling its cached function *)
+        val name_pretty = Pretty.str (deresolve sym ^ (if is_cached_value sym then "()" else ""))
         fun call_with head_pretty extra_dicts =
           let
             val (immediate, curried) = chop l ts
-            val immediate_pretty =
-              map (print_python_expr const_syntax some_thm vars BR) immediate
+            val immediate_pretty = map_index (uncurry print_arg) immediate
             val curried_pretty =
               map (fn t => Pretty.enclose "(" ")"
                 [print_python_expr const_syntax some_thm vars NOBR t]) curried
@@ -591,7 +836,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
            one argument. A constant of higher arity is eta-expanded, since the corresponding Python
            function is uncurried but function values are applied one argument at a time. *)
         if null ts andalso forall null dictss andalso l = 1
-        then [(Pretty.str o deresolve) sym]
+        then [name_pretty]
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
       else if is_class_param sym andalso not (null dictss)
@@ -603,14 +848,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             Pretty.str (attr_name sym)]
         in call_with head_pretty extra_dict_pretty end
       else if is_value sym andalso forall null dictss andalso null ts
-      then [(Pretty.str o deresolve) sym]
+      then [name_pretty]
       else
         let
           (* constructors take no dictionaries (as in SML), even when the type has sort
              constraints, e.g. the abstype morphism vec_lambda of ('a, 'b::finite) vec *)
           val dict_pretty = if is_constr sym then []
             else map_filter (print_dicts some_thm vars BR) dictss
-        in call_with ((Pretty.str o deresolve) sym) dict_pretty end
+        in call_with name_pretty dict_pretty end
       end
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
@@ -641,9 +886,21 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           | _ => stock fxy ts
         end
 
-    fun print_python_typedef tyco { cnstrs, ... } =
+    (* With type annotations, a constructor is a generic dataclass over the type
+       parameters its fields use, and the datatype is the union of its constructors:
+         class Some[A]: a: A
+         type option[A] = None_ | Some[A]
+       A constructor without a parameter its datatype has (None_) then fits every
+       instance of the datatype (option[int]) *)
+    fun print_python_typedef tyco { typarams, cnstrs } =
       let
-        val field_names = 
+        val tyvars = intro_tyvars typarams
+        fun add_tyvars (ITyVar v) = insert (op =) v
+          | add_tyvars (_ `%% tys) = fold add_tyvars tys
+        fun used_typarams arg_tys = filter (member (op =) (fold add_tyvars arg_tys [])) typarams
+        fun print_generic name vs =
+          print_typ_app (Pretty.str name) (map (Pretty.str o lookup_var tyvars) vs)
+        val field_names =
           case Record.get_info thy (Long_Name.qualifier tyco) of
               SOME { fields, ... } => SOME (map (Long_Name.base_name o fst) fields)
             | NONE => NONE
@@ -664,31 +921,69 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                         | n => "more" :: List.tabulate (n - 1, fn i => "more" ^ string_of_int (i + 2)))
                     else map fst named_fields
                 | NONE => map fst named_fields
-            val fields = labels
-              |> map (fn fname => Pretty.str (python_safe_ident fname ^ ": Any"))
+            val fields = labels ~~ arg_tys
+              |> map (fn (fname, ty) => Pretty.block [Pretty.str (python_safe_ident fname ^ ": "),
+                   if annotate then print_typ tyvars ty else Pretty.str "Any"])
+            val class_head = if annotate
+              then print_generic (deresolve_const name) (used_typarams arg_tys)
+              else Pretty.str (deresolve_const name)
           in Pretty.chunks
             [Pretty.str "@dataclass(frozen=True)",
-             Pretty.block [Pretty.str "class ", Pretty.str (deresolve_const name), Pretty.str ":"],
+             Pretty.block [Pretty.str "class ", class_head, Pretty.str ":"],
              indent_block 4 (if null fields then Pretty.str "pass" else Pretty.chunks fields)]
           end
-      in Pretty.chunks (map print_constructor cnstrs) end;
+        val alias = Pretty.block [Pretty.str "type ",
+          print_generic (deresolve (Type_Constructor tyco)) typarams, Pretty.str " = ",
+          Pretty.block (separate (Pretty.str " | ") (map (fn { name, arg_tys, ... } =>
+            print_generic (deresolve_const name) (used_typarams arg_tys)) cnstrs))]
+      in Pretty.chunks (map print_constructor cnstrs @ (if annotate then [alias] else [])) end;
 
-    fun print_python_class sym { super, methods } =
+    (* The type of a dictionary of class for the type variable v: cls[V] *)
+    fun print_dict_typ tyvars class v =
+      print_typ_app (Pretty.str (deresolve_class class)) [Pretty.str (lookup_var tyvars v)]
+
+    (* A method is called with all its arguments at once (see print_app_expr), so its
+       field has an uncurried type: a => a => bool is Callable[[A, A], bool] *)
+    fun print_method_typ tyvars ty =
+      let val (tys, ran) = Code_Thingol.unfold_fun ty
+      in Pretty.block [Pretty.str "Callable[", Pretty.enum "," "[" "]" (map (print_typ tyvars) tys),
+        Pretty.str ", ", print_typ tyvars ran, Pretty.str "]"]
+      end
+
+    (* With type annotations, a class is a generic dataclass over its type variable,
+       with a field of type super[A] per direct superclass *)
+    fun print_python_class sym { var, super, methods } =
       let
+        val tyvars = intro_tyvars [var]
         val fields = methods
-          |> map (fn (name, _) => Pretty.str (attr_name (Constant name) ^ ": Callable"))
+          |> map (fn (name, ty) => Pretty.block [Pretty.str (attr_name (Constant name) ^ ": "),
+               if annotate then print_method_typ tyvars ty else Pretty.str "Callable"])
         val super_fields = super
-          |> map (fn (self, super) => Pretty.str
-            (attr_name (Class_Relation (self, super)) ^ ": Any"))
+          |> map (fn (self, super) => Pretty.block
+            [Pretty.str (attr_name (Class_Relation (self, super)) ^ ": "),
+             if annotate then print_dict_typ tyvars super var else Pretty.str "Any"])
         val all_fields = super_fields @ fields
+        val class_head = if annotate
+          then print_typ_app (Pretty.str (deresolve_class sym)) [Pretty.str (lookup_var tyvars var)]
+          else Pretty.str (deresolve_class sym)
       in Pretty.chunks
         [Pretty.str "@dataclass(frozen=True)",
-        Pretty.block [Pretty.str "class ", Pretty.str (deresolve_class sym), Pretty.str ":"],
+        Pretty.block [Pretty.str "class ", class_head, Pretty.str ":"],
         indent_block 4 (if null all_fields then Pretty.str "pass" else Pretty.chunks all_fields)]
       end;
 
     fun print_dict_args vs = map_filter (fn (v, sort) =>
       if null sort then NONE else SOME (Pretty.str (v ^ "_dict"))) vs
+
+    (* The types of the dictionary arguments: cls[V], or a tuple of them if the sort of
+       V has several classes (indexed as v_dict[i], see print_plain_dict) *)
+    fun print_dict_arg_typs tyvars vs = map_filter (fn (_, []) => NONE
+        | (v, [class]) => SOME (print_dict_typ tyvars class v)
+        | (v, sort) => SOME (print_typ_app (Pretty.str "tuple")
+            (map (fn class => print_dict_typ tyvars class v) sort))) vs
+
+    fun annotate_args names typs =
+      map2 (fn p => fn ty => Pretty.block [p, Pretty.str ": ", ty]) names typs
 
     fun print_python_instance (target', class) { vs, tyco, inst_params, superinsts, ... } =
       let
@@ -707,35 +1002,78 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                 Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
           end
 
+        (* With type annotations, a superclass instance with a type parameter that no
+           dictionary argument determines (inf_fun[A, B](b_dict) -> inf[Callable[[A], B]])
+           is cast to its type here, which a type checker cannot infer from the call *)
         fun print_superinst_field (super_class, dictss) =
           let
             val field_name = attr_name (Class_Relation (class, super_class))
-            val value = print_plain_dict NONE tyvars
+            val dict = print_plain_dict NONE tyvars
               (Dict_Const ((tyco, super_class), dictss))
+            val value = if annotate andalso exists (null o snd) dictss
+              then
+                let val typ_vars = intro_tyvars (map fst vs)
+                in Pretty.block [Pretty.str "cast(",
+                  print_typ_app (Pretty.str (deresolve_class super_class))
+                    [print_typ typ_vars (tyco `%% map (ITyVar o fst) vs)],
+                  Pretty.str ", ", dict, Pretty.str ")"]
+                end
+              else dict
           in concat [Pretty.str field_name, Pretty.str "=", value] end
         
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params
         val body = Pretty.block [Pretty.str "return ", class_pretty, Pretty.enum "," "(" ")" fields]
         val dict_args = print_dict_args vs
-        val head = Pretty.block [Pretty.str "def ", Pretty.str instance_name, 
-          Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
+        (* annotated: def ord_list[A](a_dict: ord[A]) -> ord[list_[A]] *)
+        val head = if annotate
+          then
+            let val typ_vars = intro_tyvars (map fst vs)
+            in Pretty.block [Pretty.str "def ",
+              print_typ_app (Pretty.str instance_name) (map (Pretty.str o lookup_var typ_vars o fst) vs),
+              Pretty.enum "," "(" ")" (annotate_args dict_args (print_dict_arg_typs typ_vars vs)),
+              Pretty.str " -> ",
+              print_typ_app class_pretty [print_typ typ_vars (tyco `%% map (ITyVar o fst) vs)],
+              Pretty.str ":"]
+            end
+          else Pretty.block [Pretty.str "def ", Pretty.str instance_name,
+            Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
         (* an instance without dictionary arguments always builds the same
            (frozen) dictionary, so build it once *)
-        val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
+        val decorator = if null dict_args then [cache_decorator] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
-    fun print_func_head const vctxt dicts params =
-      Pretty.block [
-        Pretty.str "def ",
-        Pretty.str (deresolve_const const),
-        Pretty.enum "," "(" ")" (
-          dicts @
-          map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
-                      | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
-            params
-        ),
-        Pretty.str ":"
-      ]
+    (* Annotations of a function of type ty that takes n parameters: its PEP 695 type
+       parameters, the types of its dictionary arguments and parameters, and the rest of the
+       type as the return type (a function that returns a function value returns it curried,
+       see print_typ) *)
+    fun func_signature vs ty n =
+      if not annotate then NONE
+      else
+        let
+          val tyvars = intro_tyvars (map fst vs)
+          val (tys, ran) = Code_Thingol.unfold_fun ty
+          val (param_tys, rest) = chop n tys
+        in
+          if length param_tys <> n then NONE
+          else SOME (map (Pretty.str o lookup_var tyvars o fst) vs, print_dict_arg_typs tyvars vs,
+            map (print_typ tyvars) param_tys, print_typ tyvars (rest `--> ran))
+        end
+
+    fun print_func_head const vctxt dicts params func_sig =
+      let
+        val param_prettys = map_index (fn (_, SOME v) => Pretty.str (lookup_var vctxt v)
+                                        | (i, NONE) => Pretty.str ("unused" ^ string_of_int i))
+          params
+        val (name, typed_args, ret) = case func_sig of
+            NONE => (Pretty.str (deresolve_const const), dicts @ param_prettys, [])
+          | SOME (typarams, dict_tys, tys, ran) =>
+              (print_typ_app (Pretty.str (deresolve_const const)) typarams,
+               annotate_args dicts dict_tys @ annotate_args param_prettys tys,
+               [Pretty.str " -> ", ran])
+      in
+        Pretty.block ([Pretty.str "def ", name,
+          Pretty.enum "," "(" ")" typed_args] @ ret @ [Pretty.str ":"])
+      end
 
     fun print_undefined_func_stub const { vs, ty, ... } =
       let
@@ -743,9 +1081,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
         val vctxt = intro_vars (map fst vs) reserved
         val (params, vctxt) = invent_names vctxt "a" arity
         val dict_params = print_dict_args vs
+        (* it never returns: a type variable that only occurs in the return type would
+           be rejected by mypy (`def undefined[A]() -> A`) *)
         val head = print_func_head const vctxt dict_params (map SOME params)
+          (Option.map (fn (typarams, dict_tys, tys, _) => (typarams, dict_tys, tys, Pretty.str "Never"))
+            (func_signature vs ty arity))
       in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "return ", print_abort const])]
+        indent_block 4 (Pretty.block ((if annotate then [] else [Pretty.str "return "]) @
+          [print_abort const]))]
       end
 
     (* A pattern-less equation whose rhs is a constant (`f_int = f`) can't be an
@@ -763,9 +1106,12 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             in { patterns = map (IVar o fst) vs_tys, rhs = body, thm = thm } end
       (* The same holds for any pattern-less equation of a function that takes
          dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
-         printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
+         printed as `def to_nat(a_dict)`, but callers pass the arguments too; and
+         for one of arity 2 or more, e.g. `empty = (%_ _. None)`: as a value it would
+         be a curried lambda, but callers pass all arguments at once. At arity 1 both
+         agree, so such an equation stays a value. *)
       | eta_expand_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
-          if n = 0 orelse not takes_dicts then eq
+          if n = 0 orelse (not takes_dicts andalso n < 2) then eq
           else
             let
               val names = Name.invent
@@ -812,10 +1158,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args vs
-          (* a simple function without parameters and dictionary arguments can
-             be printed as a plain value (i.e., an assignment x = ...) *)
-          val prints_as_value = simple andalso null params andalso null dict_params
-          val head = print_func_head const vars2 dict_params params
+          val func_sig = func_signature vs ty (length params)
+          val head = print_func_head const vars2 dict_params params func_sig
           fun print_return some_thm vars' t' = Pretty.block [Pretty.str "return (",
             print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"]
 
@@ -875,16 +1219,15 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             then Pretty.chunks [Pretty.str "while True:", indent_block 4 body]
             else body
         in
-          if prints_as_value
+          if simple
           then
-            (* value definition: `const = (expr)` *)
-            let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in print_binding some_thm vars2 (deresolve_const const, t) end
-          else if simple
-          then
-            (* simple function, plain variable args *)
-            let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in Pretty.chunks [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))] end
+            (* simple function, plain variable args; a value is a function without
+               arguments that is evaluated once, when it is first used *)
+            let
+              val { rhs = t, thm = some_thm, ... } = hd eqs
+              val decorator = if is_cached_value (Constant const) then [cache_decorator] else []
+            in Pretty.chunks (decorator @
+              [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))]) end
           else
             (* multiple equations and/or patterns in arguments, this compiles
                to a match/case over the arguments *)
@@ -907,7 +1250,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                  own patterns are already all bare variables, that arm is
                  unconditionally exhaustive on its own *)
               val last_is_exhaustive = case rev eqs of
-                  { patterns, ... } :: _ => forall (is_trivial_pattern vars2) patterns
+                  { patterns, ... } :: _ => ends_match vars2 patterns
                 | [] => false
               val arms = map print_one_equation eqs @
                 (if last_is_exhaustive then [] else [fallthrough_arm])
@@ -933,15 +1276,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* Add trailing underscores to a name until it is unused and not a module name, following PEP 8 *)
-    fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
+    (* Add trailing underscores to a name until it is not reserved, unused and not a module name,
+       following PEP 8. The names in use are kept apart from the Name.context of reserved names:
+       Name.declare drops a trailing underscore, so after declaring `set_` the name `set_` would
+       still count as free, and a datatype and its constructor could both become `set_`. *)
+    fun namify_common module_names base (reserved, used) =
       let
         fun fresh x =
-          if Name.is_declared nsp_common x orelse member (op =) module_names x then fresh (x ^ "_") else x;
+          if Name.is_declared reserved x orelse Symtab.defined used x
+            orelse member (op =) module_names x
+          then fresh (x ^ "_") else x;
         val base' = fresh base;
-      in
-        (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), Name.declare base' nsp_common))
-      end;
+      in (base', (reserved, Symtab.insert_set base' used)) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
@@ -961,7 +1307,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
     fun flat_program module_names =
       Code_Namespace.flat_program ctxt
         { module_prefix = "", module_name = module_name, reserved = reserved,
-          identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+          identifiers = identifiers, empty_nsp = (reserved, Symtab.empty),
           namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
         exports program;
 
@@ -970,7 +1316,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
   in flat_program module_names end;
 
 fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
-    identifiers, includes, const_syntax, ... } program exports =
+    identifiers, includes, const_syntax, tyco_syntax, ... } program exports =
   let
     val program =
       Code_Symbol.Graph.restrict
@@ -1005,13 +1351,23 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       of Code_Thingol.Datatype (_, constrs) => AList.lookup (op = o apsnd fst) constrs constr
        | _ => NONE;
 
+    (* A type constructor without a printing has a Python name only if its datatype has
+       constructors: one without (e.g. a type with an abstract representation) is dropped
+       from the program, though it still has a name, so it is printed as Any *)
+    fun typ_syntax tyco = case tyco_syntax tyco of
+        SOME syn => SOME syn
+      | NONE => (case try (Code_Symbol.Graph.get_node program) (Type_Constructor tyco) of
+            SOME (Code_Thingol.Datatype (_, _ :: _)) => NONE
+          | _ => SOME (0, fn _ => fn _ => fn _ => Pretty.str "Any"));
+
     fun is_class_param (sym as Constant _) = (
         case Code_Symbol.Graph.get_node program sym of 
           Code_Thingol.Classparam _ => true
         | _ => false)
       | is_class_param _ = raise Fail "should never be reached";
       
-    fun is_value sym = 
+    fun is_value sym =
+      Code_Symbol.Graph.defined program sym andalso
       case sym of
         Constant _ => (
           case Code_Symbol.Graph.get_node program sym of 
@@ -1019,7 +1375,34 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               forall (null o snd) vs andalso null ts
           | _ => false)
       | _ => false;
+
+    (* A value that print_python_func prints as an assignment `v = ...`, and that is
+      therefore evaluated when its module is imported: eta_expand_alias turns an alias of
+      a function (`f_int = f`) and a value of arity 2 or more into a function *)
+    fun is_assigned_value (sym as Constant name) = is_value sym andalso
+          not (member (op =) undefineds name) andalso
+          (case Code_Symbol.Graph.get_node program sym of
+            Code_Thingol.Fun (((_, ty), [((_, rhs), _)]), _) =>
+              (case length (fst (Code_Thingol.unfold_fun ty)) of
+                0 => true
+              | 1 => (case rhs of IConst _ => false | _ => true)
+              | _ => false)
+          | _ => false)
+      | is_assigned_value _ = false;
     
+    (* Every value is printed as a cached function without arguments, which is called
+      where it is used, so importing a module evaluates nothing. Modules follow theories,
+      and code equations may use constants of later theories (e.g. Num.num_of_nat is
+      implemented by Code_Numeral.num_of_integer), so modules can import each other, and
+      reading an attribute of a module that is still being imported would fail. And a value
+      that calls a constant without code only raises when it is used. *)
+    val is_cached_value = is_assigned_value;
+
+    fun generic_dom (sym as Constant _) = (case Code_Symbol.Graph.get_node program sym of
+          Code_Thingol.Fun (((_, ty), _), _) => fst (Code_Thingol.unfold_fun ty)
+        | _ => [])
+      | generic_dom _ = [];
+
     fun classparams_of_class class = 
       case Code_Symbol.Graph.get_node program (Type_Class class) of 
         Code_Thingol.Class (_, (_, classparams)) => classparams
@@ -1058,8 +1441,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
             ) cnstrs
           in Datatype { typarams = typarams, cnstrs = constrs' } end
       | python_stmt_of_thingol (Code_Thingol.Class x) =
-          let val (_, (super, methods)) = x
-          in Class { super = super, methods = methods } end
+          let val (var, (super, methods)) = x
+          in Class { var = var, super = super, methods = methods } end
       | python_stmt_of_thingol (Code_Thingol.Classinst inst) = 
         let val { vs, tyco, inst_params, superinsts, ... } = inst
         in Instance { vs = vs, tyco = tyco, inst_params = inst_params, superinsts = superinsts }
@@ -1068,6 +1451,16 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 
     val module_names = Graph.keys python_program;
 
+    (* Names a type variable of a module must avoid: the reserved names, the imported
+       modules, and every statement of the module *)
+    fun tyvar_ctxt mod_name =
+      let val (stmt_gr, _) = Graph.get_node python_program mod_name
+      in Name.make_context reserved_syms
+        |> fold Name.declare module_names
+        |> fold Name.declare
+          (map_filter (try (deresolver mod_name)) (Code_Symbol.Graph.keys stmt_gr))
+      end;
+
     (* `program` (and therefore python_program) has already been pruned
       down to exactly the live statements above, so this is just: print
       every surviving statement, drop empty modules. *)
@@ -1075,26 +1468,29 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
+          fun lam_tyvars (Code_Thingol.Fun (((vs, _), _), _)) = SOME (map fst vs)
+            | lam_tyvars _ = NONE;
           val stmt_ps = (Code_Symbol.Graph.strong_conn stmt_gr |> flat)
             |> rev
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
               of (_, NONE) => NONE
               | (_, SOME (export, stmt)) =>
-                  SOME (print_python_stmt undefineds const_syntax
-                    (make_vars reserved_syms) args_num is_class_param is_value
-                    is_constr ctxt (deresolver mod_name)
+                  SOME (print_python_stmt undefineds const_syntax typ_syntax
+                    (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
+                    is_cached_value is_constr generic_dom ctxt (deresolver mod_name) (lam_tyvars stmt)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));
 
     val nonempty_names = map #1 module_stmts;
 
-    (* modules that print a cached (dictionary-free) instance need functools *)
+    (* modules that print a cached (dictionary-free) instance or a lazy value need functools *)
     fun needs_functools mod_name =
       let val (stmt_gr, _) = Graph.get_node python_program mod_name
-      in Code_Symbol.Graph.fold (fn (_, ((_, stmt), _)) => fn b => b orelse
+      in Code_Symbol.Graph.fold (fn (sym, ((_, stmt), _)) => fn b => b orelse
           (case stmt of
             SOME (_, Code_Thingol.Classinst { vs, ... }) => forall (null o snd) vs
+          | SOME _ => is_cached_value sym
           | _ => false)) stmt_gr false
       end;
 
@@ -1122,15 +1518,28 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         val import_ps = imports
           |> filter (fn (imported_name, _) => member (op =) nonempty_names imported_name)
           |> map (fn (imported_name, _) => concat [Pretty.str "import", Pretty.str imported_name]);
-        val imports_block = Pretty.chunks (Pretty.str "from dataclasses import dataclass"
-          :: Pretty.str "from typing import Any, Callable"
+        (* annotations are not evaluated (PEP 563), so they may refer to classes and
+           type aliases defined further down, e.g. in recursive datatypes *)
+        val annotate = Config.get ctxt type_annotations
+        val imports_block = Pretty.chunks
+          ((if annotate then [Pretty.str "from __future__ import annotations"] else [])
+          @ Pretty.str "from dataclasses import dataclass"
+          :: Pretty.str ("from typing import Any, Callable" ^
+            (if annotate then ", Never, cast" else ""))
           :: (if needs_functools mod_name then [Pretty.str "import functools"] else [])
           @ import_ps)
         val abort_def = Pretty.chunks
-          [Pretty.str "def _abort(msg, thunk):",
+          [Pretty.str (if annotate then "def _abort(msg: str, thunk: object) -> Never:"
+             else "def _abort(msg, thunk):"),
            indent_block 4 (Pretty.str "raise RuntimeError(msg)")]
+        (* the cache decorator with type annotations, see print_python_stmt *)
+        val cached_def = if annotate andalso needs_functools mod_name
+          then [Pretty.chunks
+            [Pretty.str "def _cached[F: Callable[[], Any]](f: F) -> F:",
+             indent_block 4 (Pretty.str "return cast(F, functools.cache(f))")]]
+          else []
       in ([mod_name ^ ".py"],
-        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: stmt_ps))
+        Pretty.chunks2 (print_header mod_name :: imports_block :: abort_def :: cached_def @ stmt_ps))
       end;
 
     val p = map print_one_module module_stmts

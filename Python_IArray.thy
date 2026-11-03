@@ -13,7 +13,7 @@ text \<open>
 \<close>
 
 code_printing
-    type_constructor iarray \<rightharpoonup> (Python) "_ tuple"
+    type_constructor iarray \<rightharpoonup> (Python) "tuple[_, ...]"
   | constant IArray \<rightharpoonup> (Python) "tuple'(_')"
   | constant IArray.list_of \<rightharpoonup> (Python) "list'(_')"
   | constant IArray.sub \<rightharpoonup> (Python) "_[_]"
@@ -24,7 +24,9 @@ code_printing
   | constant IArray.exists \<rightharpoonup> (Python) "any'(map'(_, _')')"
 
 text \<open>@{const IArray.sub'} and @{const IArray.tabulate} take a pair; a literal pair is
-  printed directly, any other pair expression is unpacked into a lambda.\<close>
+  printed directly, any other pair expression is passed to a lambda that takes it apart
+  by indexing (\<open>(lambda p: p[0][p[1]])(t)\<close>), so that it is evaluated once. Unpacking
+  it with \<open>*\<close> instead would lose the types of its components for a type checker.\<close>
 
 setup \<open>
   let
@@ -34,16 +36,16 @@ setup \<open>
           `$ a `$ b) = SOME (a, b)
       | dest_pair _ = NONE;
 
-    fun paired name params body = fn print_term => fn vars => fn t =>
+    fun paired body = fn print_term => fn vars => fn t =>
       case dest_pair t of
         SOME (a, b) => body (print_term vars BR a) (print_term vars NOBR b)
-      | NONE => Pretty.block [Pretty.str ("(lambda " ^ params ^ ": "),
-          body (Pretty.str (fst name)) (Pretty.str (snd name)),
-          Pretty.str ")(*", print_term vars NOBR t, Pretty.str ")"];
+      | NONE => Pretty.block [Pretty.str "(lambda p: ",
+          body (Pretty.str "p[0]") (Pretty.str "p[1]"),
+          Pretty.str ")(", print_term vars NOBR t, Pretty.str ")"];
 
-    val sub' = paired ("a", "i") "a, i" (fn a => fn i =>
+    val sub' = paired (fn a => fn i =>
       Pretty.block [a, Pretty.str "[", i, Pretty.str "]"]);
-    val tabulate = paired ("n", "f") "n, f" (fn n => fn f =>
+    val tabulate = paired (fn n => fn f =>
       Pretty.block [Pretty.str "tuple(map(", f, Pretty.str ", range(", n, Pretty.str ")))"]);
 
     fun set target (c, pr) =
