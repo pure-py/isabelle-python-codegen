@@ -192,8 +192,8 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
     is_class_param is_value is_cached_value is_constr ctxt deresolve lam_tyvars =
   let
     fun deresolve_const name = deresolve (Constant name);
-    (* names of the lambdas hoisted out of this statement so far, see anf_term *)
-    val hoisted_lam_names = Unsynchronized.ref ([] : string list);
+    (* names of the local definitions of this statement so far, see invent_local *)
+    val local_names = Unsynchronized.ref ([] : string list);
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_inst name = deresolve (Class_Instance name);
 
@@ -400,6 +400,40 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
       | print_python_pattern (PList (ps, SOME rest)) =
           Pretty.enum "," "[" "]" (map print_python_pattern ps @ [Pretty.str ("*" ^ rest)]);
     
+    (* The annotation of a local definition: the type variables are those of the generic
+       function it is in (lam_tyvars), and Any outside of one *)
+    val local_tyvars = case lam_tyvars of
+        SOME vs => intro_tyvars vs
+      | NONE => (Symtab.empty, tyvar_ctxt)
+    fun print_local_typ ty = case lam_tyvars of
+        SOME _ => print_typ local_tyvars ty
+      | NONE =>
+          let
+            fun add_tyvars (ITyVar v) = insert (op =) v
+              | add_tyvars (_ `%% tys) = fold add_tyvars tys
+          in print_typ (fold (fn v => Symtab.update (v, "Any")) (add_tyvars ty [])
+            Symtab.empty, tyvar_ctxt) ty end
+
+    (* The type of a term, where a constant or a lambda determines it: a case has the
+       result type of its case combinator *)
+    fun type_of_term (ICase { primitive, ... }) = type_of_term primitive
+      | type_of_term ((_, ty) `|=> (_, rty)) = SOME ([ty] `--> rty)
+      | type_of_term t = (case Code_Thingol.unfold_const_app t of
+          SOME ({ dom, range, ... }, ts) =>
+            if length ts <= length dom then SOME (drop (length ts) dom `--> range) else NONE
+        | NONE => NONE)
+
+    (* A fresh name for a local definition. Mypy rejects definitions of one name at
+       different types, even in different arms of a match, so with type annotations the
+       names of local definitions differ within a statement. *)
+    fun invent_local vars prefix =
+      if annotate
+      then
+        let val (name, vars') = invent_name (fst vars, fold Name.declare (! local_names) (snd vars))
+          prefix
+        in (local_names := name :: ! local_names; (name, vars')) end
+      else invent_name vars prefix
+
     fun print_guard _ _ [] = NONE
       | print_guard some_thm vars guards =
         guards
@@ -471,7 +505,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             SOME (cond, t_branch, e_branch) =>
               let
                 val (bc, vars1, cond') = anf_term vars cond;
-                val (x, vars2) = invent_name vars1 "x";
+                val (x, vars2) = invent_local vars1 "x";
               in (bc @ [PIf (x, cond', t_branch, e_branch)], vars2, IVar (SOME x)) end
           | NONE =>
               (case (eta_expansion t, Code_Thingol.unfold_const_app t) of
@@ -509,21 +543,10 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                 | strip_lambdas vs body = ([], vs, body, NONE)
               val (typed_params, vars1, body, range_ty) = strip_lambdas vars t
               val params = map fst typed_params
-              val tyvars = case lam_tyvars of
-                  SOME vs => intro_tyvars vs
-                | NONE => (Symtab.empty, tyvar_ctxt)
-              fun print_lam_typ ty = case lam_tyvars of
-                  SOME _ => print_typ tyvars ty
-                | NONE =>
-                    let
-                      fun add_tyvars (ITyVar v) = insert (op =) v
-                        | add_tyvars (_ `%% tys) = fold add_tyvars tys
-                    in print_typ (fold (fn v => Symtab.update (v, "Any")) (add_tyvars ty [])
-                      Symtab.empty, tyvar_ctxt) ty end
               (* the annotations of the def taking the i-th parameter *)
               fun def_typs i =
                 let val (_, rest) = chop i (map snd typed_params)
-                in (print_lam_typ (hd rest), print_lam_typ (tl rest `--> the range_ty)) end
+                in (print_local_typ (hd rest), print_local_typ (tl rest `--> the range_ty)) end
               val (param_prettys, vars2) = fold_map
                 (fn NONE => (fn vs => let val (n, vs') = invent_name vs "unused"
                       in (Pretty.str n, vs') end)
@@ -541,20 +564,9 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                   end
                 else Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
                   Pretty.str "(", param, Pretty.str "):"]
-              (* mypy rejects defs of one name with different signatures, even in
-                 different arms of a match, so with type annotations the names of
-                 hoisted lambdas differ within a statement *)
-              fun invent_lam_name vs =
-                if annotate
-                then
-                  let
-                    val (fname, vs') = invent_name
-                      (fst vs, fold Name.declare (! hoisted_lam_names) (snd vs)) "lam"
-                  in (hoisted_lam_names := fname :: ! hoisted_lam_names; (fname, vs')) end
-                else invent_name vs "lam"
               fun curried_defs vs i [param] =
                     let
-                      val (fname, vs') = invent_lam_name vs
+                      val (fname, vs') = invent_local vs "lam"
                       val body_pretty = print_tail_expr NONE
                         (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
                           print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
@@ -563,7 +575,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                       fname, vs') end
                 | curried_defs vs i (param :: params') =
                     let
-                      val (fname, vs1) = invent_lam_name vs
+                      val (fname, vs1) = invent_local vs "lam"
                       val (inner, inner_name, vs2) = curried_defs vs1 (i + 1) params'
                       val inner_block = Pretty.chunks [inner,
                         Pretty.str ("return " ^ lookup_var vs2 inner_name)]
@@ -577,7 +589,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
               val vars4 = (Symtab.update (fname, lookup_var vars3 fname) (fst vars), snd vars3)
               in ([PRaw def_stmt], vars4, IVar (SOME fname)) end
       | anf_term vars (t as ICase _) =
-          let val (x, vars') = invent_name vars "x"
+          let val (x, vars') = invent_local vars "x"
           in ([PBind (x, t)], vars', IVar (SOME x)) end
 
     and print_if_then_else some_thm finish vars target t_branch e_branch =
@@ -605,10 +617,10 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           end
       | get_if_then_else _ = NONE
 
-    and print_tail_expr some_thm finish vars (ICase { term = target, clauses, ... }) =
+    and print_tail_expr some_thm finish vars (ICase { term = target, typ, clauses, ... }) =
         (case get_if_then_else clauses of
           SOME (t_branch, e_branch) => print_if_then_else some_thm finish vars target t_branch e_branch
-        | NONE => print_case_block some_thm finish vars target clauses)
+        | NONE => print_case_block some_thm finish vars target typ clauses)
       | print_tail_expr some_thm finish vars t =
           let val (bindings, vars', t') = anf_term vars t
           in Pretty.chunks (map (print_preamble some_thm vars') bindings @ [finish vars' t']) end
@@ -619,7 +631,15 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"])
         vars t
 
-    and print_preamble some_thm vars (PBind (name, t)) = print_binding some_thm vars (name, t)
+    (* With type annotations, the variable that the arms of a case assign is declared
+       first, or a type checker would take the type of the first assignment (one
+       constructor) for all of them *)
+    and print_preamble some_thm vars (PBind (name, t)) =
+          (case (annotate, type_of_term t) of
+            (true, SOME ty) => Pretty.chunks
+              [Pretty.block [Pretty.str name, Pretty.str ": ", print_local_typ ty],
+               print_binding some_thm vars (name, t)]
+          | _ => print_binding some_thm vars (name, t))
       | print_preamble _ _ (PRaw p) = p
       | print_preamble some_thm vars (PIf (name, cond, t_branch, e_branch)) =
           let
@@ -635,11 +655,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
               indent_block 4 (branch e_branch)]
           end
 
-    and print_case_block some_thm finish vars target clauses =
+    and print_case_block some_thm finish vars target typ clauses =
       let
         val (target_bindings, vars1, target') = anf_term vars target;
-        val (tvar, vars0) = invent_name vars1 "target"
-        val assign = Pretty.block [Pretty.str tvar, Pretty.str " = (",
+        val (tvar, vars0) = invent_local vars1 "target"
+        val tvar_decl = if annotate
+          then Pretty.block [Pretty.str tvar, Pretty.str ": ", print_local_typ typ]
+          else Pretty.str tvar
+        val assign = Pretty.block [tvar_decl, Pretty.str " = (",
           print_python_expr const_syntax some_thm vars1 NOBR target', Pretty.str ")"];
         val match_head = Pretty.block [Pretty.str "match ", Pretty.str tvar, Pretty.str ":"];
         fun one_arm (pattern, term) =

@@ -206,17 +206,33 @@ def add_one() -> Callable[[int], int]:
     return (lam)
 ```
 
+A variable that the branches of an `if` or the arms of a `match` assign is
+declared with its type first, and the subject of a `match` is annotated too;
+otherwise a type checker would take the constructor of the first assignment
+(`Inl`) for the type of the variable, and reject the others:
+
+```python
+x: Sum_Type.sum_[Nat.nat, Nat.nat]
+if (Int.less_eq_int(Int.zero_int_(), i)):
+    x = (Sum_Type.Inl(Int.nat(i)))
+else:
+    x = (Sum_Type.Inr(...))
+```
+
+These local definitions, and the hoisted lambdas, get names that differ within
+a definition, since mypy rejects one name declared at different types, even in
+different arms of a `match`.
+
 Mypy infers the parameter types of a lambda passed to a generic function by
 checking its body again for each candidate, so nested lambdas take exponential
 time: the generators of `Quickcheck_Random` took it hours to check.
 
 Mypy does not accept all annotated code. It cannot always infer the type
 parameters of a generic higher-order call whose arguments are lambdas
-(`Fun.comp(lambda ..., lambda ...)`). A variable bound to one constructor
-(`zero_nat_`) cannot take another constructor of the same type later, and a list
-of one constructor's type, such as `list[App]`, is not a `list[term]`, since
-lists are invariant. Over the slow suite this leaves 51 errors in
-`generated_basic` and 35 in `generated_full`; mypy checks each in about a second.
+(`Fun.comp(...)`). It infers the type parameter of a generic call from a
+constructor argument as that constructor's class: in `fold(f, xs, Nil())` it
+takes `Nil`, not `list_[A]`, which then does not fit `f`. Over the slow suite
+this leaves 19 errors in `generated_basic` and 16 in `generated_full`; mypy checks each in about a second.
 
 ## Running the tests
 
