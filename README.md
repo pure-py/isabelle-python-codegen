@@ -241,6 +241,11 @@ the call:
 return (fold(lam, xs, cast(list_[A], Nil())))
 ```
 
+A constructor printed as a Python literal, such as a list with `Python_Setup`,
+is cast for any parameter whose declared type has a type variable, since
+Python's lists are invariant: `[Leaf()]` is a `list[Leaf]`, not a
+`list[tree[int]]` (`examples/Example_annotation_edges.thy`).
+
 Likewise, a superclass instance whose type parameter no dictionary argument
 determines (`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) is cast to its
 type in the instance that uses it. A generic function passed as an argument

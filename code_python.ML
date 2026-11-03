@@ -773,17 +773,27 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
            constructor's own class for the type variable (`fold(f, xs, Nil())` makes B Nil
            rather than list_[A]), which then does not fit the other arguments. So is a
            generic value (`fold(f, xs, top_set())`), whose type parameters it would take
-           for Never. *)
+           for Never. A constructor printed as a Python literal is cast for any parameter
+           whose declared type has a type variable: Python's lists are invariant, so
+           `first_or([Leaf()], f, t)` does not fit a list[tree[int]] either. *)
         val declared_dom = if annotate then generic_dom sym else []
         fun is_constr_app t = case Code_Thingol.unfold_const_app t of
             SOME ({ sym = sym' as Constant c, typargs, ... }, _) =>
               is_some (Code.get_type_of_constr_or_abstr thy c)
               orelse (is_cached_value sym' andalso not (null typargs))
           | _ => false
+        fun is_literal_constr_app t = case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = Constant c, ... }, _) =>
+              is_some (Code.get_type_of_constr_or_abstr thy c) andalso is_some (const_syntax c)
+          | _ => false
+        fun has_tyvar (ITyVar _) = true
+          | has_tyvar (_ `%% tys) = exists has_tyvar tys
+        fun needs_cast declared t = case declared of
+            ITyVar _ => is_constr_app t
+          | _ => has_tyvar declared andalso is_literal_constr_app t
         fun print_arg i t =
           if i < length declared_dom andalso i < length dom
-            andalso (case nth declared_dom i of ITyVar _ => true | _ => false)
-            andalso is_constr_app t
+            andalso needs_cast (nth declared_dom i) t
           then Pretty.block [Pretty.str "cast(", print_local_typ (nth dom i), Pretty.str ", ",
             print_python_expr const_syntax some_thm vars NOBR t, Pretty.str ")"]
           else print_python_expr const_syntax some_thm vars BR t
