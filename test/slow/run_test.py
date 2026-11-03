@@ -25,11 +25,8 @@ import pytest
 THIS_DIR = Path(__file__).resolve().parent
 GENERATED_DIRS = [THIS_DIR / "generated_basic", THIS_DIR / "generated_full"]
 
-# Modules that fail to import for reasons other than import cycles
-KNOWN_FAILURES = {
-    # the value `X = yot_literal(...)` calls a constant without code at import time
-    "Code_Test": "value calls an undefined constant at import time",
-}
+# Modules that are known not to import
+KNOWN_FAILURES = {}
 
 
 def _cases():

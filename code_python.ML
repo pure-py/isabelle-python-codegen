@@ -1221,8 +1221,22 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               | NONE => false)
             (Code_Symbol.Graph.all_succs program [sym])
           end;
+    (* A value that calls a constant without code (printed as `_abort`) would raise
+      when its module is imported, even if it is never used, so it is printed as a
+      cached function as well; so is a value that uses such a value. *)
+    fun aborts (sym as Constant name) = member (op =) undefineds name orelse
+          (case Code_Symbol.Graph.get_node program sym of
+            Code_Thingol.Fun ((_, eqs), _) => not (exists (snd o snd) eqs)
+          | _ => false)
+      | aborts _ = false;
+    fun depends_on_abort visited sym =
+      exists (fn sym' => aborts sym' orelse
+          (is_value sym' andalso not (member (op =) visited sym')
+            andalso depends_on_abort (sym' :: visited) sym'))
+        (Code_Symbol.Graph.immediate_succs program sym);
     val lazy_values = Code_Symbol.Graph.keys program
-      |> filter (fn sym => is_value sym andalso depends_on_cycle sym);
+      |> filter (fn sym => is_value sym andalso
+          (depends_on_cycle sym orelse depends_on_abort [sym] sym));
     fun is_lazy_value sym = member (op =) lazy_values sym;
 
     fun classparams_of_class class = 

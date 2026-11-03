@@ -71,7 +71,9 @@ def num_of_nat():
     return (Fun.comp(Arith.num_of_integer, lambda a: a))
 ```
 
-All other values stay plain assignments.
+The same holds for a value that calls a constant without code (`_abort`), or
+uses such a value, so that it raises when it is used rather than when its module
+is imported. All other values stay plain assignments.
 
 A definition, class or datatype with a reserved name gets a trailing
 underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
@@ -259,8 +261,6 @@ circumvent this, such a symbol must be declared with
 `Code_Python.add_transparent_wrapper_sym`. For an example, look at
 `examples/Example_transparent_wrapper.thy`.
 
-- A value whose evaluation calls a constant without code (`_abort`) raises when its
-module is imported, not when the value is used (`Code_Test` in the slow suite).
 
 ## License
 
