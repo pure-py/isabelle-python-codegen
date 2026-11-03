@@ -191,7 +191,10 @@ isabelle build -o python_type_annotations -d . -e Python_Examples
 ```
 
 Changing the option does not rebuild an up-to-date session, so add `-c` to
-rebuild the session when switching it on or off. `make typecheck-diff` builds
+rebuild the session when switching it on or off. `-o` only works when the
+directory is registered as an Isabelle component (`isabelle components -u .`)
+before the `Python` session is built, since Isabelle reads `etc/options` only
+for a component. `make typecheck-diff` builds
 the examples with the option and runs mypy over them, one example directory at
 a time (each has its own copy of the library modules).
 
@@ -238,14 +241,18 @@ the call:
 return (fold(lam, xs, cast(list_[A], Nil())))
 ```
 
-Mypy does not accept all annotated code. It cannot always infer the type
-parameters of a generic higher-order call (`Fun.comp(Fun.comp(f, g), List.rev)`
-in `Word`). An instance whose type parameter only occurs in its result
-(`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) cannot be applied where
-that parameter is needed. And the unit result of `trace` and `flush` (`Debug`) is
-bound to a variable, although their annotation says they return nothing. Over
-the slow suite this leaves 4 errors in `generated_basic` and 3 in
-`generated_full`; mypy checks each in about a second.
+Likewise, a superclass instance whose type parameter no dictionary argument
+determines (`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) is cast to its
+type in the instance that uses it. A generic function passed as an argument
+(`Fun.comp(f, List.rev)`) becomes a local function at its instantiated type,
+as a partial application does, since mypy cannot always infer the type
+parameters of one generic function passed to another. And a `case` on `unit`
+with one arm (`case trace s of () => t`) evaluates its subject as a statement,
+since mypy rejects binding the result of a function that returns `None`.
+
+Mypy accepts the code generated for the slow suite (`generated_basic` and
+`generated_full`) and checks each in about a second; `make typecheck-slow`
+builds it with the option and runs mypy, as CI does.
 
 ## Running the tests
 

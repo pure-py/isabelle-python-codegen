@@ -480,7 +480,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
     and eta_expansion t =
       if not annotate then NONE
       else case Code_Thingol.unfold_const_app t of
-        SOME (app as ({ sym = sym as Constant name, dictss, ... }, ts)) =>
+        SOME (app as ({ sym = sym as Constant name, dictss, typargs, ... }, ts)) =>
           if member (op =) undefineds name then NONE
           else
             let
@@ -488,8 +488,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                   SOME (_, Plain_printer _) => NONE
                 | SOME (wanted, _) => SOME wanted
                 | NONE =>
+                    (* a unary function is printed by name, unless it is generic: a type
+                       checker cannot always infer the type arguments of a generic function
+                       passed to another generic one *)
                     let val l = args_num sym
-                    in if null ts andalso forall null dictss andalso l = 1 then NONE else SOME l end
+                    in
+                      if null ts andalso forall null dictss andalso l = 1 andalso null typargs
+                      then NONE else SOME l
+                    end
             in case arity of
                 SOME l => if length ts < l
                   then SOME (Code_Thingol.saturated_application l app) else NONE
@@ -619,7 +625,23 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           end
       | get_if_then_else _ = NONE
 
-    and print_tail_expr some_thm finish vars (ICase { term = target, typ, clauses, ... }) =
+    (* With type annotations, a case on unit with one arm (`case trace s of () => t`)
+       evaluates its subject as a statement and continues with the arm: unit is None,
+       and a type checker rejects binding the result of a function that returns None *)
+    and print_tail_expr some_thm finish vars
+          (ICase { term = target, typ = "Product_Type.unit" `%% [], clauses = [(pat, t)], ... }) =
+          if annotate andalso (case pat of
+              IVar NONE => true
+            | IConst { sym = Constant "Product_Type.Unity", ... } => true
+            | _ => false)
+          then
+            let val (bindings, vars', target') = anf_term vars target
+            in Pretty.chunks (map (print_preamble some_thm vars') bindings @
+              [print_python_expr const_syntax some_thm vars' NOBR target',
+               print_tail_expr some_thm finish vars' t])
+            end
+          else print_case_block some_thm finish vars target ("Product_Type.unit" `%% []) [(pat, t)]
+      | print_tail_expr some_thm finish vars (ICase { term = target, typ, clauses, ... }) =
         (case get_if_then_else clauses of
           SOME (t_branch, e_branch) => print_if_then_else some_thm finish vars target t_branch e_branch
         | NONE => print_case_block some_thm finish vars target typ clauses)
@@ -949,11 +971,23 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                 Pretty.block [Pretty.str "lambda ", params, Pretty.str ": ", call]]
           end
 
+        (* With type annotations, a superclass instance with a type parameter that no
+           dictionary argument determines (inf_fun[A, B](b_dict) -> inf[Callable[[A], B]])
+           is cast to its type here, which a type checker cannot infer from the call *)
         fun print_superinst_field (super_class, dictss) =
           let
             val field_name = attr_name (Class_Relation (class, super_class))
-            val value = print_plain_dict NONE tyvars
+            val dict = print_plain_dict NONE tyvars
               (Dict_Const ((tyco, super_class), dictss))
+            val value = if annotate andalso exists (null o snd) dictss
+              then
+                let val typ_vars = intro_tyvars (map fst vs)
+                in Pretty.block [Pretty.str "cast(",
+                  print_typ_app (Pretty.str (deresolve_class super_class))
+                    [print_typ typ_vars (tyco `%% map (ITyVar o fst) vs)],
+                  Pretty.str ", ", dict, Pretty.str ")"]
+                end
+              else dict
           in concat [Pretty.str field_name, Pretty.str "=", value] end
         
         val fields = map print_superinst_field superinsts @ map print_classparam_field inst_params

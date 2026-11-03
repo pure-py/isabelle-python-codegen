@@ -36,19 +36,22 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
+      # -o python_type_annotations needs the option declared in etc/options, which Isabelle
+      # only reads for a registered component; the Python session must be built after this,
+      # or it is compiled without the option and -o has no effect
+      - name: register component
+        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
+
       - name: extract Python code
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Examples
 
       - name: Run diff test suite
         run: uv run pytest test/diff/run_test.py
 
-      # -o needs the option declared in etc/options, which Isabelle only reads for a
-      # registered component
-      - name: register component
-        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
-
       - name: extract Python code with type annotations
-        run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
+        run: |
+          /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
+          grep -q "from __future__ import annotations" examples/python_out/Python_Examples.Example/code/Example.py
 
       - name: type-check generated code
         # each example has its own copy of the library modules, so check them one by one
@@ -88,6 +91,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
+      # -o python_type_annotations needs the option declared in etc/options, which Isabelle
+      # only reads for a registered component; the Python session must be built after this,
+      # or it is compiled without the option and -o has no effect
+      - name: register component
+        run: /home/isabelle/Isabelle/bin/isabelle components -u "$PWD"
+
       - name: extract Python code
         run: ISABELLE_PYTHON=1 /home/isabelle/Isabelle/bin/isabelle build -v -d . -e Python_Test_Slow
 
@@ -98,4 +107,14 @@ jobs:
 
       - name: import check generated code
         run: uv run pytest test/slow/run_test.py --tb=line
+
+      - name: extract Python code with type annotations
+        run: |
+          /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Test_Slow
+          grep -q "from __future__ import annotations" test/slow/generated_full/Nat.py
+
+      - name: type-check generated code
+        run: |
+          uv run mypy test/slow/generated_basic
+          uv run mypy test/slow/generated_full
           

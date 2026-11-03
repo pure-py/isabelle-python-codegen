@@ -35,6 +35,11 @@ typecheck-diff:
 	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Examples
 	status=0; for d in examples/python_out/*/code; do uv run mypy $$d || status=1; done; exit $$status
 
+typecheck-slow:
+	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Test_Slow
+	uv run mypy test/slow/generated_basic
+	uv run mypy test/slow/generated_full
+
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py
 
@@ -48,7 +53,7 @@ test: test-quick
 build:
 	$(ISABELLE) build -d . -e Python
 
-.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff typecheck-diff reseed test-all test build-test-oracle test-oracle build reserved-words
+.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff typecheck-diff typecheck-slow reseed test-all test build-test-oracle test-oracle build reserved-words
 
 
 
