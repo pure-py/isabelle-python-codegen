@@ -180,9 +180,10 @@ fun invent_names vars prefix n =
  *   is_constr: true for a datatype constructor without a printing
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
+ *   lam_prefix: prefix of the names of hoisted lambdas (see anf_term)
  *)
 fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
-    is_class_param is_value is_constr ctxt deresolve =
+    is_class_param is_value is_constr ctxt deresolve lam_prefix =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
@@ -199,7 +200,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
 
     (* A function value is applied one argument at a time, so its type is curried:
        a => b => c is Callable[[a], Callable[[b], c]]. A type without a Python name
-       (e.g. a datatype without constructors, which is not printed) is Any. *)
+       has a syntax that prints Any (typ_syntax in serialize_python). *)
     fun print_typ tyvars (ITyVar v) = Pretty.str (lookup_var tyvars v)
       | print_typ tyvars ("fun" `%% [ty1, ty2]) =
           Pretty.block [Pretty.str "Callable[[", print_typ tyvars ty1, Pretty.str "], ",
@@ -361,7 +362,19 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
               else is_sole_constr sym andalso forall exhaustive args
           | NONE => false)
 
-    fun is_trivial_pattern _ t = exhaustive t
+    (* Whether a match needs no `case _` arm after a last arm with the patterns ts. Python
+       needs none after an exhaustive arm. A type checker however only sees that an arm is
+       exhaustive if it knows the type of the subject, which it does not for an unannotated
+       lambda, and otherwise infers that the function may fall off the match and return
+       None. With type annotations, only an arm that matches anything ends the match: a
+       capture or a wildcard, after which Python forbids further arms. *)
+    fun ends_match vars ts =
+      if annotate
+      then (case pattern_of_iterms vars ts of
+          ([PCapture _], [], _, _) => true
+        | ([PWild], [], _, _) => true
+        | _ => false)
+      else forall exhaustive ts
 
     fun print_python_pattern (PCapture v) = Pretty.str v
       | print_python_pattern PWild = Pretty.str "_"
@@ -452,7 +465,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                   Pretty.str "(", param, Pretty.str "):"]
               fun curried_defs vs [param] =
                     let
-                      val (fname, vs') = invent_name vs "lam"
+                      val (fname, vs') = invent_name vs lam_prefix
                       val body_pretty = print_tail_expr NONE
                         (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
                           print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
@@ -461,7 +474,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                       fname, vs') end
                 | curried_defs vs (param :: params') =
                     let
-                      val (fname, vs1) = invent_name vs "lam"
+                      val (fname, vs1) = invent_name vs lam_prefix
                       val (inner, inner_name, vs2) = curried_defs vs1 params'
                       val inner_block = Pretty.chunks [inner,
                         Pretty.str ("return " ^ lookup_var vs2 inner_name)]
@@ -549,7 +562,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
            pattern is exhaustive on its own *)
         val last_clause_pattern = case rev clauses of (p, _) :: _ => SOME p | [] => NONE
         val already_exhaustive = case last_clause_pattern of
-            SOME p => is_trivial_pattern vars0 p
+            SOME p => ends_match vars0 [p]
           | NONE => false
         val arms = map one_arm clauses @ (if already_exhaustive then [] else [fallthrough_arm])
       in
@@ -568,8 +581,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           SOME app => print_app const_syntax some_thm vars fxy app
           (* If not, then this might be a lambda application or similar *)
         | NONE =>
-          applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
-            (print_python_expr const_syntax some_thm vars BR t1) [t2])
+          let
+            (* an applied lambda needs brackets, or it would apply its body:
+               `lambda x: t(u)` instead of `(lambda x: t)(u)` *)
+            val head = case t1 of
+                _ `|=> _ => Pretty.enclose "(" ")"
+                  [print_python_expr const_syntax some_thm vars NOBR t1]
+              | _ => print_python_expr const_syntax some_thm vars BR t1
+          in applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy head [t2] end)
       | IVar (SOME v) => Pretty.str (lookup_var vars v)
       | IVar NONE => error "can't return a variable with no name"
       | (params, _) `|=> (t', _) =>
@@ -884,9 +903,12 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             in { patterns = map (IVar o fst) vs_tys, rhs = body, thm = thm } end
       (* The same holds for any pattern-less equation of a function that takes
          dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
-         printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
+         printed as `def to_nat(a_dict)`, but callers pass the arguments too; and
+         for one of arity 2 or more, e.g. `empty = (%_ _. None)`: as a value it would
+         be a curried lambda, but callers pass all arguments at once. At arity 1 both
+         agree, so such an equation stays a value. *)
       | eta_expand_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
-          if n = 0 orelse not takes_dicts then eq
+          if n = 0 orelse (not takes_dicts andalso n < 2) then eq
           else
             let
               val names = Name.invent
@@ -1036,7 +1058,7 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                  own patterns are already all bare variables, that arm is
                  unconditionally exhaustive on its own *)
               val last_is_exhaustive = case rev eqs of
-                  { patterns, ... } :: _ => forall (is_trivial_pattern vars2) patterns
+                  { patterns, ... } :: _ => ends_match vars2 patterns
                 | [] => false
               val arms = map print_one_equation eqs @
                 (if last_is_exhaustive then [] else [fallthrough_arm])
@@ -1137,6 +1159,15 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       of Code_Thingol.Datatype (_, constrs) => AList.lookup (op = o apsnd fst) constrs constr
        | _ => NONE;
 
+    (* A type constructor without a printing has a Python name only if its datatype has
+       constructors: one without (e.g. a type with an abstract representation) is dropped
+       from the program, though it still has a name, so it is printed as Any *)
+    fun typ_syntax tyco = case tyco_syntax tyco of
+        SOME syn => SOME syn
+      | NONE => (case try (Code_Symbol.Graph.get_node program) (Type_Constructor tyco) of
+            SOME (Code_Thingol.Datatype (_, _ :: _)) => NONE
+          | _ => SOME (0, fn _ => fn _ => fn _ => Pretty.str "Any"));
+
     fun is_class_param (sym as Constant _) = (
         case Code_Symbol.Graph.get_node program sym of 
           Code_Thingol.Classparam _ => true
@@ -1217,14 +1248,20 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       |> map (fn mod_name =>
         let
           val (stmt_gr, imports) = Graph.get_node python_program mod_name;
+          (* The lambdas hoisted out of a value definition are defined at module level, so
+             their names must differ from those of any other value: `_v_lam` for the value
+             v (no other name starts with an underscore, except those of the prelude) *)
+          fun lam_prefix sym = if is_value sym
+            then "_" ^ Long_Name.base_name (deresolver mod_name sym) ^ "_lam"
+            else "lam";
           val stmt_ps = (Code_Symbol.Graph.strong_conn stmt_gr |> flat)
             |> rev
             |> map_filter (fn sym => case Code_Symbol.Graph.get_node stmt_gr sym
               of (_, NONE) => NONE
               | (_, SOME (export, stmt)) =>
-                  SOME (print_python_stmt undefineds const_syntax tyco_syntax
+                  SOME (print_python_stmt undefineds const_syntax typ_syntax
                     (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
-                    is_constr ctxt (deresolver mod_name)
+                    is_constr ctxt (deresolver mod_name) (lam_prefix sym)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));

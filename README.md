@@ -145,6 +145,18 @@ def ord_list[A](a_dict: ord_[A]) -> ord_[list[A]]: ...
 def announce[A](a_dict: describable[A], x: A) -> str: ...
 ```
 
+A type that has no Python name is annotated as `Any`: a type without a
+printing whose datatype has no constructors (for example one with an abstract
+representation) is not part of the generated code.
+
+Some printing differs from the output without the option, so that a type
+checker accepts the code. A `match` keeps its final `case _:` arm that raises an
+error, unless its last pattern is a variable or a wildcard: a type checker
+cannot tell that the other patterns are exhaustive, and would otherwise report
+a missing return. The lambdas hoisted out of a value `v` are named `_v_lam`
+rather than `lam`, so that two values in one module do not define the same
+name at different types.
+
 Set the option like `python_tail_calls`:
 
 ```bash
@@ -154,6 +166,15 @@ isabelle build -o python_type_annotations -d . -e Python_Examples
 Changing the option does not rebuild an up-to-date session, so add `-c` to
 rebuild the session when switching it on or off. `make typecheck-diff` builds
 the examples with the option and runs pyright over them.
+
+Pyright does not accept all annotated code. It cannot always infer the type
+parameters of a generic higher-order call whose arguments are lambdas
+(`Fun.comp(lambda ..., lambda ...)`). A list of one constructor's type, such
+as `list[App]`, is not a `list[term]`, since lists are invariant. And
+polymorphic values are not annotated, so their types are unknown. Over the
+slow suite this leaves about 15 errors in each of `generated_basic` and
+`generated_full`. Some of its larger modules take pyright minutes each to
+check.
 
 ## Running the tests
 
