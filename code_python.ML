@@ -184,11 +184,15 @@ fun invent_names vars prefix n =
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *   lam_prefix: prefix of the names of hoisted lambdas (see anf_term)
+ *   lam_tyvars: the type variables that the annotations of hoisted lambdas may name, those
+ *     of the generic function they are in; NONE outside of one, where they print as Any
  *)
 fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved args_num
-    is_class_param is_value is_lazy_value is_constr ctxt deresolve lam_prefix =
+    is_class_param is_value is_lazy_value is_constr ctxt deresolve lam_prefix lam_tyvars =
   let
     fun deresolve_const name = deresolve (Constant name);
+    (* names of the lambdas hoisted out of this statement so far, see anf_term *)
+    val hoisted_lam_names = Unsynchronized.ref ([] : string list);
     fun deresolve_class name = deresolve (Type_Class name);
     fun deresolve_inst name = deresolve (Class_Instance name);
 
@@ -430,7 +434,33 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
             | _ => NONE)
       | _ => NONE
 
-    and anf_term vars (t as IConst _) = ([], vars, t)
+    (* With type annotations, a partial application that would be printed as a lambda
+       (see print_app_expr) is eta-expanded before hoisting, so that it becomes an
+       annotated def as well *)
+    and eta_expansion t =
+      if not annotate then NONE
+      else case Code_Thingol.unfold_const_app t of
+        SOME (app as ({ sym = sym as Constant name, dictss, ... }, ts)) =>
+          if member (op =) undefineds name then NONE
+          else
+            let
+              val arity = case const_syntax name of
+                  SOME (_, Plain_printer _) => NONE
+                | SOME (wanted, _) => SOME wanted
+                | NONE =>
+                    let val l = args_num sym
+                    in if null ts andalso forall null dictss andalso l = 1 then NONE else SOME l end
+            in case arity of
+                SOME l => if length ts < l
+                  then SOME (Code_Thingol.saturated_application l app) else NONE
+              | NONE => NONE
+            end
+      | _ => NONE
+
+    and anf_term vars (t as IConst _) =
+          (case eta_expansion t of
+            SOME t' => anf_term vars t'
+          | NONE => ([], vars, t))
       | anf_term vars (t as IVar _) = ([], vars, t)
       | anf_term vars (t as t1 `$ t2) =
           (case short_circuit t of
@@ -440,22 +470,56 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                 val (x, vars2) = invent_name vars1 "x";
               in (bc @ [PIf (x, cond', t_branch, e_branch)], vars2, IVar (SOME x)) end
           | NONE =>
-              let
-                val (b1, vars1, t1') = anf_term vars t1;
-                val (b2, vars2, t2') = anf_term vars1 t2;
-              in (b1 @ b2, vars2, t1' `$ t2') end)
+              (case (eta_expansion t, Code_Thingol.unfold_const_app t) of
+                (SOME t', _) => anf_term vars t'
+              | (NONE, SOME (const, ts)) =>
+                  (* the arguments of a constant; its partial applications that make
+                     up the head are not terms of their own *)
+                  let
+                    val (bs, vars', ts') = fold (fn t => fn (bs, vs, ts') =>
+                        let val (b, vs', t') = anf_term vs t
+                        in (bs @ b, vs', ts' @ [t']) end)
+                      ts ([], vars, [])
+                  in (bs, vars', IConst const `$$ ts') end
+              | (NONE, NONE) =>
+                  let
+                    val (b1, vars1, t1') = anf_term vars t1;
+                    val (b2, vars2, t2') = anf_term vars1 t2;
+                  in (b1 @ b2, vars2, t1' `$ t2') end))
+      (* With type annotations, every lambda becomes a def, whose annotations spare a
+         type checker inferring the types of its parameters. Mypy infers those of a
+         lambda passed to a generic function by checking it once per candidate type, so
+         nested ones take exponential time: the generators of Quickcheck_Random take
+         hours to check. *)
       | anf_term vars (t as (_, _) `|=> (_, _)) =
-          if is_stmt_free t
+          if is_stmt_free t andalso not annotate
           then ([], vars, t)
           else
             let
-              fun strip_lambdas vs ((param, _) `|=> (body, _)) =
+              fun strip_lambdas vs ((param, ty) `|=> (body, body_ty)) =
                     let
                       val vs' = intro_vars (map_filter I [param]) vs
-                      val (ps, vs'', body') = strip_lambdas vs' body
-                    in (param :: ps, vs'', body') end
-                | strip_lambdas vs body = ([], vs, body)
-              val (params, vars1, body) = strip_lambdas vars t
+                      val (ps, vs'', body', range_ty) = strip_lambdas vs' body
+                    in ((param, ty) :: ps, vs'', body',
+                      case range_ty of NONE => SOME body_ty | some => some) end
+                | strip_lambdas vs body = ([], vs, body, NONE)
+              val (typed_params, vars1, body, range_ty) = strip_lambdas vars t
+              val params = map fst typed_params
+              val tyvars = case lam_tyvars of
+                  SOME vs => intro_tyvars vs
+                | NONE => (Symtab.empty, tyvar_ctxt)
+              fun print_lam_typ ty = case lam_tyvars of
+                  SOME _ => print_typ tyvars ty
+                | NONE =>
+                    let
+                      fun add_tyvars (ITyVar v) = insert (op =) v
+                        | add_tyvars (_ `%% tys) = fold add_tyvars tys
+                    in print_typ (fold (fn v => Symtab.update (v, "Any")) (add_tyvars ty [])
+                      Symtab.empty, tyvar_ctxt) ty end
+              (* the annotations of the def taking the i-th parameter *)
+              fun def_typs i =
+                let val (_, rest) = chop i (map snd typed_params)
+                in (print_lam_typ (hd rest), print_lam_typ (tl rest `--> the range_ty)) end
               val (param_prettys, vars2) = fold_map
                 (fn NONE => (fn vs => let val (n, vs') = invent_name vs "unused"
                       in (Pretty.str n, vs') end)
@@ -463,28 +527,46 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
                 params vars1
               (* Function values are applied one argument at a time (f(x)(y)), so a
                  multi-parameter lambda becomes nested one-parameter defs. *)
-              fun def_head vs fname param =
-                Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
+              fun def_head vs fname param i =
+                if annotate
+                then
+                  let val (param_typ, ret_typ) = def_typs i
+                  in Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
+                    Pretty.str "(", param, Pretty.str ": ", param_typ, Pretty.str ") -> ",
+                    ret_typ, Pretty.str ":"]
+                  end
+                else Pretty.block [Pretty.str "def ", Pretty.str (lookup_var vs fname),
                   Pretty.str "(", param, Pretty.str "):"]
-              fun curried_defs vs [param] =
+              (* mypy rejects defs of one name with different signatures, even in
+                 different arms of a match, so with type annotations the names of
+                 hoisted lambdas differ within a statement *)
+              fun invent_lam_name vs =
+                if annotate
+                then
+                  let
+                    val (fname, vs') = invent_name
+                      (fst vs, fold Name.declare (! hoisted_lam_names) (snd vs)) lam_prefix
+                  in (hoisted_lam_names := fname :: ! hoisted_lam_names; (fname, vs')) end
+                else invent_name vs lam_prefix
+              fun curried_defs vs i [param] =
                     let
-                      val (fname, vs') = invent_name vs lam_prefix
+                      val (fname, vs') = invent_lam_name vs
                       val body_pretty = print_tail_expr NONE
                         (fn vars' => fn t' => Pretty.block [Pretty.str "return (",
                           print_python_expr const_syntax NONE vars' NOBR t', Pretty.str ")"])
                         vs' body
-                    in (Pretty.chunks [def_head vs' fname param, indent_block 4 body_pretty],
+                    in (Pretty.chunks [def_head vs' fname param i, indent_block 4 body_pretty],
                       fname, vs') end
-                | curried_defs vs (param :: params') =
+                | curried_defs vs i (param :: params') =
                     let
-                      val (fname, vs1) = invent_name vs lam_prefix
-                      val (inner, inner_name, vs2) = curried_defs vs1 params'
+                      val (fname, vs1) = invent_lam_name vs
+                      val (inner, inner_name, vs2) = curried_defs vs1 (i + 1) params'
                       val inner_block = Pretty.chunks [inner,
                         Pretty.str ("return " ^ lookup_var vs2 inner_name)]
-                    in (Pretty.chunks [def_head vs2 fname param, indent_block 4 inner_block],
+                    in (Pretty.chunks [def_head vs2 fname param i, indent_block 4 inner_block],
                       fname, vs2) end
-                | curried_defs _ [] = error "internal error: hoisted lambda without parameters"
-              val (def_stmt, fname, vars3) = curried_defs vars2 param_prettys
+                | curried_defs _ _ [] = error "internal error: hoisted lambda without parameters"
+              val (def_stmt, fname, vars3) = curried_defs vars2 0 param_prettys
               (* the lambda's parameters are local to the def: keep the outer
                  bindings (only adding the def's name), but keep all names
                  reserved so later fresh names cannot clash *)
@@ -1315,6 +1397,10 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
           (* The lambdas hoisted out of a value definition are defined at module level, so
              their names must differ from those of any other value: `_v_lam` for the value
              v (no other name starts with an underscore, except those of the prelude) *)
+          (* a generic function declares its type variables, a value cannot *)
+          fun lam_tyvars sym (Code_Thingol.Fun (((vs, _), _), _)) =
+                if is_value sym andalso not (is_lazy_value sym) then NONE else SOME (map fst vs)
+            | lam_tyvars _ _ = NONE;
           fun lam_prefix sym = if is_value sym
             then "_" ^ Long_Name.base_name (deresolver mod_name sym) ^ "_lam"
             else "lam";
@@ -1326,6 +1412,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
                   SOME (print_python_stmt undefineds const_syntax typ_syntax
                     (tyvar_ctxt mod_name) (make_vars reserved_syms) args_num is_class_param is_value
                     is_lazy_value is_constr ctxt (deresolver mod_name) (lam_prefix sym)
+                    (lam_tyvars sym stmt)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
       |> filter (fn (_, _, stmt_ps) => not (null stmt_ps));

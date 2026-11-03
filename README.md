@@ -192,15 +192,26 @@ a time (each has its own copy of the library modules).
 
 A polymorphic value has `Any` for its type variables (`empty_list: list[Any] =
 []`), since a module-level assignment cannot declare type parameters. A function
-without code, which always aborts, returns `Never`.
+without code, which always aborts, returns `Never`. A lambda becomes a local
+function with annotated parameters, and so does a partial application:
+
+```python
+def _add_one_lam(a: int) -> int:
+    return (add2(1, a))
+add_one: Callable[[int], int] = (_add_one_lam)
+```
+
+Mypy infers the parameter types of a lambda passed to a generic function by
+checking its body again for each candidate, so nested lambdas take exponential
+time: the generators of `Quickcheck_Random` took it hours to check.
 
 Mypy does not accept all annotated code. It cannot always infer the type
 parameters of a generic higher-order call whose arguments are lambdas
 (`Fun.comp(lambda ..., lambda ...)`). A variable bound to one constructor
 (`zero_nat_`) cannot take another constructor of the same type later, and a list
 of one constructor's type, such as `list[App]`, is not a `list[term]`, since
-lists are invariant. Over the slow suite this gives dozens of errors, and mypy
-takes more than half an hour on `generated_basic` alone.
+lists are invariant. Over the slow suite this leaves 75 errors in
+`generated_basic` and 40 in `generated_full`; mypy checks each in about a second.
 
 ## Running the tests
 
