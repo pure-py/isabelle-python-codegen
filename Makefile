@@ -33,7 +33,7 @@ test-oracle: build-test-oracle
 
 typecheck-diff:
 	$(ISABELLE) build -d . -c -o python_type_annotations -e Python_Examples
-	uv run pyright examples/python_out
+	status=0; for d in examples/python_out/*/code; do uv run mypy $$d || status=1; done; exit $$status
 
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py

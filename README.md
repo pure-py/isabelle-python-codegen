@@ -187,16 +187,20 @@ isabelle build -o python_type_annotations -d . -e Python_Examples
 
 Changing the option does not rebuild an up-to-date session, so add `-c` to
 rebuild the session when switching it on or off. `make typecheck-diff` builds
-the examples with the option and runs pyright over them.
+the examples with the option and runs mypy over them, one example directory at
+a time (each has its own copy of the library modules).
 
-Pyright does not accept all annotated code. It cannot always infer the type
+A polymorphic value has `Any` for its type variables (`empty_list: list[Any] =
+[]`), since a module-level assignment cannot declare type parameters. A function
+without code, which always aborts, returns `Never`.
+
+Mypy does not accept all annotated code. It cannot always infer the type
 parameters of a generic higher-order call whose arguments are lambdas
-(`Fun.comp(lambda ..., lambda ...)`). A list of one constructor's type, such
-as `list[App]`, is not a `list[term]`, since lists are invariant. And
-polymorphic values are not annotated, so their types are unknown. Over the
-slow suite this leaves about 15 errors in each of `generated_basic` and
-`generated_full`. Some of its larger modules take pyright minutes each to
-check.
+(`Fun.comp(lambda ..., lambda ...)`). A variable bound to one constructor
+(`zero_nat_`) cannot take another constructor of the same type later, and a list
+of one constructor's type, such as `list[App]`, is not a `list[term]`, since
+lists are invariant. Over the slow suite this gives dozens of errors, and mypy
+takes more than half an hour on `generated_basic` alone.
 
 ## Running the tests
 

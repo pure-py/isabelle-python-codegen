@@ -3,6 +3,7 @@ python_out/
 generated_basic/
 generated_full/
 __pycache__/
+.mypy_cache/
 
 # Editor backups
 *.thy~

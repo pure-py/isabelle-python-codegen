@@ -51,7 +51,11 @@ jobs:
         run: /home/isabelle/Isabelle/bin/isabelle build -v -d . -c -o python_type_annotations -e Python_Examples
 
       - name: type-check generated code
-        run: uv run pyright examples/python_out
+        # each example has its own copy of the library modules, so check them one by one
+        run: |
+          status=0
+          for d in examples/python_out/*/code; do uv run mypy "$d" || status=1; done
+          exit $status
 
   oracle:
     runs-on: ubuntu-latest

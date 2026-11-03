@@ -887,10 +887,14 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
         val vctxt = intro_vars (map fst vs) reserved
         val (params, vctxt) = invent_names vctxt "a" arity
         val dict_params = print_dict_args vs
+        (* it never returns: a type variable that only occurs in the return type would
+           be rejected by mypy (`def undefined[A]() -> A`) *)
         val head = print_func_head const vctxt dict_params (map SOME params)
-          (func_signature vs ty arity)
+          (Option.map (fn (typarams, dict_tys, tys, _) => (typarams, dict_tys, tys, Pretty.str "Never"))
+            (func_signature vs ty arity))
       in Pretty.chunks [head,
-        indent_block 4 (Pretty.block [Pretty.str "return ", print_abort const])]
+        indent_block 4 (Pretty.block ((if annotate then [] else [Pretty.str "return "]) @
+          [print_abort const]))]
       end
 
     (* A pattern-less equation whose rhs is a constant (`f_int = f`) can't be an
@@ -1028,14 +1032,18 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           if prints_as_value
           then
             (* value definition: `const = (expr)`, or `const: T = (expr)`; if the
-               value is computed by a match, every arm gets the annotation. A polymorphic
-               value (`empty_list = []`) is not annotated: a module-level assignment
-               cannot declare type parameters. *)
+               value is computed by a match, every arm gets the annotation. A module-level
+               assignment cannot declare type parameters, so a polymorphic value has Any
+               for its type variables (`empty_list: list[Any] = []`). *)
             let
               val { rhs = t, thm = some_thm, ... } = hd eqs
+              val any_tyvars = (fold (fn (v, _) => Symtab.update (v, "Any")) vs Symtab.empty,
+                tyvar_ctxt)
               val target = case func_sig of
                   SOME ([], _, _, ty) => deresolve_const const ^ ": " ^ Pretty.unformatted_string_of ty
-                | _ => deresolve_const const
+                | SOME _ => deresolve_const const ^ ": " ^
+                    Pretty.unformatted_string_of (print_typ any_tyvars ty)
+                | NONE => deresolve_const const
             in print_binding some_thm vars2 (target, t) end
           else if simple
           then
