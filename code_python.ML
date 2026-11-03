@@ -788,9 +788,30 @@ fun print_python_stmt undefineds const_syntax tyco_syntax tyvar_ctxt reserved ar
           | _ => false
         fun has_tyvar (ITyVar _) = true
           | has_tyvar (_ `%% tys) = exists has_tyvar tys
-        fun needs_cast declared t = case declared of
+        (* An argument for which a type checker infers exactly its type needs no cast. A
+           variable, a call or a hoisted lambda has its declared type. So has a constructor
+           application if its class is the type (a constructor printed as a Python literal,
+           or the only one of its datatype), and its arguments determine the type variables
+           of its result: (x, y), [x, *xs], True or None, but not [] or Nil(). And any term
+           of a Python type without parameters is exact, such as the numeral 2 :: int. *)
+        fun determined c =
+          let val (dom_tys, range_ty) = strip_type (Sign.the_const_type thy c)
+          in subset (op =) (Term.add_tvarsT range_ty [], fold Term.add_tvarsT dom_tys []) end
+        fun is_python_scalar (tyco `%% []) = is_some (tyco_syntax tyco)
+          | is_python_scalar _ = false
+        fun is_exact t =
+          (case type_of_term t of SOME ty => is_python_scalar ty | NONE => false) orelse
+          (case Code_Thingol.unfold_const_app t of
+            SOME ({ sym = sym' as Constant c, typargs, ... }, ts) =>
+              if is_some (Code.get_type_of_constr_or_abstr thy c)
+              then (is_some (const_syntax c) orelse is_sole_constr sym')
+                andalso determined c andalso forall is_exact ts
+              else not (is_cached_value sym' andalso not (null typargs))
+                andalso (null typargs orelse forall is_exact ts)
+          | _ => true)
+        fun needs_cast declared t = not (is_exact t) andalso (case declared of
             ITyVar _ => is_constr_app t
-          | _ => has_tyvar declared andalso is_literal_constr_app t
+          | _ => has_tyvar declared andalso is_literal_constr_app t)
         fun print_arg i t =
           if i < length declared_dom andalso i < length dom
             andalso needs_cast (nth declared_dom i) t

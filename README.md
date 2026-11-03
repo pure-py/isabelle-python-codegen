@@ -246,6 +246,11 @@ is cast for any parameter whose declared type has a type variable, since
 Python's lists are invariant: `[Leaf()]` is a `list[Leaf]`, not a
 `list[tree[int]]` (`examples/Example_annotation_edges.thy`).
 
+No cast is printed where a type checker infers the type exactly anyway: for a
+variable or a call, a literal such as `(x, y)`, `[x, *xs]`, `True` or `2`, or
+the only constructor of a datatype. `mypy --strict` then finds one redundant
+cast in the slow suite.
+
 Likewise, a superclass instance whose type parameter no dictionary argument
 determines (`def inf_fun[A, B](b_dict) -> inf[Callable[[A], B]]`) is cast to its
 type in the instance that uses it. A generic function passed as an argument
