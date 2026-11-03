@@ -1283,6 +1283,20 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               forall (null o snd) vs andalso null ts
           | _ => false)
       | _ => false;
+
+    (* A value that print_python_func prints as an assignment `v = ...`, and that is
+      therefore evaluated when its module is imported: eta_expand_alias turns an alias of
+      a function (`f_int = f`) and a value of arity 2 or more into a function *)
+    fun is_assigned_value (sym as Constant name) = is_value sym andalso
+          not (member (op =) undefineds name) andalso
+          (case Code_Symbol.Graph.get_node program sym of
+            Code_Thingol.Fun (((_, ty), [((_, rhs), _)]), _) =>
+              (case length (fst (Code_Thingol.unfold_fun ty)) of
+                0 => true
+              | 1 => (case rhs of IConst _ => false | _ => true)
+              | _ => false)
+          | _ => false)
+      | is_assigned_value _ = false;
     
     (* The modules follow the theories, and code equations may use constants of later
       theories (e.g. Num.num_of_nat is implemented by Code_Numeral.num_of_integer), so
@@ -1321,11 +1335,11 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
       | aborts _ = false;
     fun depends_on_abort visited sym =
       exists (fn sym' => aborts sym' orelse
-          (is_value sym' andalso not (member (op =) visited sym')
+          (is_assigned_value sym' andalso not (member (op =) visited sym')
             andalso depends_on_abort (sym' :: visited) sym'))
         (Code_Symbol.Graph.immediate_succs program sym);
     val lazy_values = Code_Symbol.Graph.keys program
-      |> filter (fn sym => is_value sym andalso
+      |> filter (fn sym => is_assigned_value sym andalso
           (depends_on_cycle sym orelse depends_on_abort [sym] sym));
     fun is_lazy_value sym = member (op =) lazy_values sym;
 
@@ -1399,7 +1413,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
              v (no other name starts with an underscore, except those of the prelude) *)
           (* a generic function declares its type variables, a value cannot *)
           fun lam_tyvars sym (Code_Thingol.Fun (((vs, _), _), _)) =
-                if is_value sym andalso not (is_lazy_value sym) then NONE else SOME (map fst vs)
+                if is_assigned_value sym andalso not (is_lazy_value sym) then NONE
+                else SOME (map fst vs)
             | lam_tyvars _ _ = NONE;
           fun lam_prefix sym = if is_value sym
             then "_" ^ Long_Name.base_name (deresolver mod_name sym) ^ "_lam"

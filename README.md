@@ -210,8 +210,8 @@ parameters of a generic higher-order call whose arguments are lambdas
 (`Fun.comp(lambda ..., lambda ...)`). A variable bound to one constructor
 (`zero_nat_`) cannot take another constructor of the same type later, and a list
 of one constructor's type, such as `list[App]`, is not a `list[term]`, since
-lists are invariant. Over the slow suite this leaves 75 errors in
-`generated_basic` and 40 in `generated_full`; mypy checks each in about a second.
+lists are invariant. Over the slow suite this leaves 51 errors in
+`generated_basic` and 33 in `generated_full`; mypy checks each in about a second.
 
 ## Running the tests
 

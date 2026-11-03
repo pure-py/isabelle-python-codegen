@@ -16,6 +16,7 @@ Each module is imported in a fresh interpreter, since importing a module
 also runs (and may break) the modules it imports.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +46,18 @@ if not _CASES:
         "`isabelle build -d . -e Python_Test_Slow` first.",
         allow_module_level=True,
     )
+
+
+_CACHED_DEF = re.compile(r"^@functools\.cache\ndef (\w+)(?:\[[^\]]*\])?\((.*?)\)", re.M)
+
+
+@pytest.mark.parametrize("gen_dir,module", _CASES)
+def test_cached_functions_take_no_arguments(gen_dir, module):
+    # Only lazy values and instances without dictionaries are cached, and their
+    # uses call them without arguments
+    source = (gen_dir / f"{module}.py").read_text()
+    with_args = [name for name, params in _CACHED_DEF.findall(source) if params.strip()]
+    assert not with_args, f"cached functions with parameters: {', '.join(with_args)}"
 
 
 @pytest.mark.parametrize("gen_dir,module", _CASES)
