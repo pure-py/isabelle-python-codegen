@@ -91,4 +91,7 @@ jobs:
         run: |
           uv run python -m py_compile test/slow/generated_basic/*.py
           uv run python -m py_compile test/slow/generated_full/*.py
+
+      - name: import check generated code
+        run: uv run pytest test/slow/run_test.py --tb=line
           

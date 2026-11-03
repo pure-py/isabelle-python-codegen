@@ -53,6 +53,26 @@ names that the prelude of each generated module binds (`dataclass`, `Any`,
 `Callable`, `Never`, `functools`, `_abort`, `_unimplemented`; `prelude_names` in
 `code_python.ML`).
 
+### Modules and import cycles
+
+Each theory becomes a Python module (unless `code_identifier` or the
+`module_name` of `export_code` says otherwise). Code equations may use
+constants of later theories, e.g. `Num.num_of_nat` is implemented by
+`Code_Numeral.num_of_integer`, so the modules can import each other: in the
+HOL library, about 50 modules form one import cycle. Python allows this as long
+as no module reads an attribute of a module that is still being imported,
+which only a value definition (`x = ...`) does. A value that depends on a
+module in its own import cycle is therefore printed as a cached function
+without arguments, and its uses call it:
+
+```python
+@functools.cache
+def num_of_nat():
+    return (Fun.comp(Arith.num_of_integer, lambda a: a))
+```
+
+All other values stay plain assignments.
+
 A definition, class or datatype with a reserved name gets a trailing
 underscore (`tuple` becomes `tuple_`), and a variable gets a fresh variant
 (`len` becomes `lena`).
@@ -203,7 +223,11 @@ with `Python.Python_Setup`. Unfortunately, we can currently not use Isabelle's
 isabelle build -d . -e Python_Test_Slow
 uv run python -m py_compile test/slow/generated_basic/*.py
 uv run python -m py_compile test/slow/generated_full/*.py
+uv run pytest test/slow/run_test.py
 ```
+
+`run_test.py` imports every generated module in a fresh interpreter; the
+modules that are known not to import are listed in `KNOWN_FAILURES` there.
 
 - **diff**
 
@@ -234,6 +258,9 @@ which maps to an identity in Python causes an `undefined name error`. To
 circumvent this, such a symbol must be declared with
 `Code_Python.add_transparent_wrapper_sym`. For an example, look at
 `examples/Example_transparent_wrapper.thy`.
+
+- A value whose evaluation calls a constant without code (`_abort`) raises when its
+module is imported, not when the value is used (`Code_Test` in the slow suite).
 
 ## License
 
