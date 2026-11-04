@@ -31,4 +31,14 @@ python_check b_if_arith: "(if True then 1 else 2::int) + (if False then 10 else 
 python_check b_neg_neg: "- (- (3::int))"
 python_check b_if_cond_eq: "(if (1::int) = 1 = True then 1 else (0::int))"
 
+section \<open>Short-circuiting connectives\<close>
+
+text \<open>A case expression in the right operand of a conjunction, guarded by the left
+  operand: @{term "hd []"} must not be evaluated.\<close>
+
+definition conj_case_alt :: "nat list \<Rightarrow> bool" where
+  "conj_case_alt xs = (xs \<noteq> [] \<and> ((case hd xs of 0 \<Rightarrow> 0 | Suc n \<Rightarrow> n) = 0))"
+
+python_check_grid sc_conj_case_alt: "conj_case_alt" over "[[], [0], [1], [2], [0, 5], [3, 1]]"
+
 end
