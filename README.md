@@ -79,7 +79,7 @@ it, so it is evaluated once, when it is first used:
 ```python
 @functools.cache
 def num_of_nat():
-    return (Fun.comp(Arith.num_of_integer, lambda a: a))
+    return (Fun.comp(Code_Numeral.num_of_integer, lambda a: a))
 ```
 
 Code that uses the generated modules therefore calls a value too

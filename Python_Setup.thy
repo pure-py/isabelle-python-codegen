@@ -3,10 +3,6 @@ theory Python_Setup
       "HOL-Library.Code_Abstract_Char"
 begin
 
-code_identifier
-  code_module Code_Target_Nat \<rightharpoonup> (Python) Arith
-| code_module Code_Target_Int \<rightharpoonup> (Python) Arith
-
 (* Integers *)
 (* Isabelle defines a div 0 = 0 and a mod 0 = a, while Python raises ZeroDivisionError;
    the guarded lambdas evaluate each operand once (here and for nat, integer, natural). *)

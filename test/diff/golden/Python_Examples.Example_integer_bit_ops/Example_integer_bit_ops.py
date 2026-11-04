@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 import functools
-import Arith
+import Code_Numeral
 import Num
 
 def _abort(msg, thunk):
@@ -11,36 +11,36 @@ def _abort(msg, thunk):
 
 @functools.cache
 def test_bit():
-    return (Arith.bit_integer(10, 1))
+    return (Code_Numeral.bit_integer(10, 1))
 
 @functools.cache
 def test_sgn():
-    return (Arith.sgn_integer(-42))
+    return (Code_Numeral.sgn_integer(-42))
 
 @functools.cache
 def test_mask():
-    return (Arith.mask_integer((max(0, 5))))
+    return (Code_Numeral.mask_integer((max(0, 5))))
 
 @functools.cache
 def test_set_bit():
-    return (Arith.set_bit_integer((max(0, 2)), 0))
+    return (Code_Numeral.set_bit_integer((max(0, 2)), 0))
 
 @functools.cache
 def test_drop_bit():
-    return (Arith.drop_bit_integer((max(0, 2)), 20))
+    return (Code_Numeral.drop_bit_integer((max(0, 2)), 20))
 
 @functools.cache
 def test_flip_bit():
-    return (Arith.flip_bit_integer(1, 5))
+    return (Code_Numeral.flip_bit_integer(1, 5))
 
 @functools.cache
 def test_push_bit():
-    return (Arith.push_bit_integer((max(0, 3)), 5))
+    return (Code_Numeral.push_bit_integer((max(0, 3)), 5))
 
 @functools.cache
 def test_take_bit():
-    return (Arith.take_bit_integer((max(0, 4)), 255))
+    return (Code_Numeral.take_bit_integer((max(0, 4)), 255))
 
 @functools.cache
 def test_unset_bit():
-    return (Arith.unset_bit_integer(0, 7))
+    return (Code_Numeral.unset_bit_integer(0, 7))
