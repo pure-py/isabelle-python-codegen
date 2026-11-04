@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 import List
 
@@ -47,7 +48,9 @@ def impl_case(xs):
         x = (True)
     return (x)
 
-if_case_empty = (if_case([]))
+@functools.cache
+def if_case_empty():
+    return (if_case([]))
 
 def conj_case_list(xss):
     if (not List.null(xss)):
@@ -63,14 +66,26 @@ def conj_case_list(xss):
         x = (False)
     return (x)
 
-conj_case_zero = (conj_case([0]))
+@functools.cache
+def conj_case_zero():
+    return (conj_case([0]))
 
-conj_case_empty = (conj_case([]))
+@functools.cache
+def conj_case_empty():
+    return (conj_case([]))
 
-disj_case_empty = (disj_case([]))
+@functools.cache
+def disj_case_empty():
+    return (disj_case([]))
 
-disj_case_three = (disj_case([max(0, 3)]))
+@functools.cache
+def disj_case_three():
+    return (disj_case([max(0, 3)]))
 
-impl_case_empty = (impl_case([]))
+@functools.cache
+def impl_case_empty():
+    return (impl_case([]))
 
-conj_case_list_empty = (conj_case_list([]))
+@functools.cache
+def conj_case_list_empty():
+    return (conj_case_list([]))

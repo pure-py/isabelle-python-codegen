@@ -71,6 +71,31 @@ one in `.python-version`. Commit the updated list with the version change.
 `isabelle build` rebuilds the `Python` session, and every session built on it,
 whenever the list changes.
 
+### Values and modules
+
+A value is printed as a cached function without arguments, and its uses call
+it, so it is evaluated once, when it is first used:
+
+```python
+@functools.cache
+def num_of_nat():
+    return (Fun.comp(Arith.num_of_integer, lambda a: a))
+```
+
+Code that uses the generated modules therefore calls a value too
+(`Example_nat.nat_sum()`). An alias of a function (`f_int = f`) is printed as an
+ordinary function instead.
+
+Importing a module thus evaluates nothing, which matters for two reasons. Each
+theory becomes a Python module (unless `code_identifier` or the `module_name` of
+`export_code` says otherwise), and code equations may use constants of later
+theories, e.g. `Num.num_of_nat` is implemented by `Code_Numeral.num_of_integer`.
+So the modules can import each other: in the HOL library, about 50 modules form
+one import cycle. Python allows this as long as no module reads an attribute of
+a module that is still being imported, which evaluating a value could do. And a
+value that calls a constant without code (`_abort`) raises when it is used,
+rather than when its module is imported.
+
 ### Tail calls as loops
 
 Python does not eliminate tail calls, so a function that recurses once per
@@ -123,7 +148,12 @@ with `Python.Python_Setup`. Unfortunately, we can currently not use Isabelle's
 isabelle build -d . -e Python_Test_Slow
 uv run python -m py_compile test/slow/generated_basic/*.py
 uv run python -m py_compile test/slow/generated_full/*.py
+uv run pytest test/slow/run_test.py
 ```
+
+`run_test.py` imports every generated module in a fresh interpreter, and checks
+that every cached function takes no arguments; the modules that are known not to
+import are listed in `KNOWN_FAILURES` there.
 
 - **diff**
 

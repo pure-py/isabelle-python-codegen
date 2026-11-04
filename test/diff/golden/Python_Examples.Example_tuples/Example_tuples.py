@@ -2,14 +2,19 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-point = ((3, 4))
+@functools.cache
+def point():
+    return ((3, 4))
 
-triple = ((1, ((2, 3))))
+@functools.cache
+def triple():
+    return ((1, ((2, 3))))
 
 def swap_pair(p):
     return (((p[1]), (p[0])))
@@ -19,8 +24,14 @@ def add_points(x0, x1):
         case ((x1a, y1), (x2, y2)):
             return ((((x1a + x2)), ((y1 + y2))))
 
-point_swapped = (swap_pair(point))
+@functools.cache
+def point_swapped():
+    return (swap_pair(point()))
 
-points_sum = (add_points(point, point_swapped))
+@functools.cache
+def points_sum():
+    return (add_points(point(), point_swapped()))
 
-points_list = ([point, point_swapped])
+@functools.cache
+def points_list():
+    return ([point(), point_swapped()])

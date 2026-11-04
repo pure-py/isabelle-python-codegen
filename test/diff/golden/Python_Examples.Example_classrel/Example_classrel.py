@@ -19,6 +19,10 @@ def super_op_bool():
 def sub_op_bool():
     return Example_classrel_base.sub_op(super_op_sub_op = super_op_bool())
 
-test_sub = (Example_classrel_base.sub_apply(sub_op_bool(), True))
+@functools.cache
+def test_sub():
+    return (Example_classrel_base.sub_apply(sub_op_bool(), True))
 
-test_super = (sup_apply_bool(True))
+@functools.cache
+def test_super():
+    return (sup_apply_bool(True))

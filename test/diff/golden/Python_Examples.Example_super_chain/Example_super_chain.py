@@ -133,6 +133,10 @@ def announce_chain(a_dict, x):
 def announce_multi(a_dict, x):
     return (a_dict.labeled_labeled_measured.label_of(x) + " (" + a_dict.measured_labeled_measured.size_label(x) + ") -- " + a_dict.full_description(x))
 
-announce_chain_cat = (announce_chain(tagged_extra_animal(), Cat()))
+@functools.cache
+def announce_chain_cat():
+    return (announce_chain(tagged_extra_animal(), Cat()))
 
-announce_multi_box = (announce_multi(labeled_measured_item(), Box()))
+@functools.cache
+def announce_multi_box():
+    return (announce_multi(labeled_measured_item(), Box()))

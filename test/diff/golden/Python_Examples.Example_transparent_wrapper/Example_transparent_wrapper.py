@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
@@ -9,7 +10,9 @@ def _abort(msg, thunk):
 def unbox(n):
     return (n)
 
-unbox_test = (unbox(True))
+@functools.cache
+def unbox_test():
+    return (unbox(True))
 
 def box_is_true(x0):
     match x0:
@@ -20,4 +23,6 @@ def box_is_true(x0):
         case _:
             raise RuntimeError("match failed")
 
-box_is_true_test = ((box_is_true(True), box_is_true(False)))
+@functools.cache
+def box_is_true_test():
+    return ((box_is_true(True), box_is_true(False)))

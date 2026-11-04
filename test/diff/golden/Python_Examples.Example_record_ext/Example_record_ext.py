@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -44,8 +45,14 @@ def px(x0):
 def point3d_sum(p):
     return ((((px(p) + py(p))) + pz(p)))
 
-origin3d = (point_ext_(0, 0, point3d_ext_(0, None)))
+@functools.cache
+def origin3d():
+    return (point_ext_(0, 0, point3d_ext_(0, None)))
 
-shifted3d = (move_z(origin3d, 7))
+@functools.cache
+def shifted3d():
+    return (move_z(origin3d(), 7))
 
-total3d = (point3d_sum(shifted3d))
+@functools.cache
+def total3d():
+    return (point3d_sum(shifted3d()))

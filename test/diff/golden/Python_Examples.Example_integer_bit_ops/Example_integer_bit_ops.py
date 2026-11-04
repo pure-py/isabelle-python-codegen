@@ -2,26 +2,45 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Arith
 import Num
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-test_bit = (Arith.bit_integer(10, 1))
+@functools.cache
+def test_bit():
+    return (Arith.bit_integer(10, 1))
 
-test_sgn = (Arith.sgn_integer(-42))
+@functools.cache
+def test_sgn():
+    return (Arith.sgn_integer(-42))
 
-test_mask = (Arith.mask_integer((max(0, 5))))
+@functools.cache
+def test_mask():
+    return (Arith.mask_integer((max(0, 5))))
 
-test_set_bit = (Arith.set_bit_integer((max(0, 2)), 0))
+@functools.cache
+def test_set_bit():
+    return (Arith.set_bit_integer((max(0, 2)), 0))
 
-test_drop_bit = (Arith.drop_bit_integer((max(0, 2)), 20))
+@functools.cache
+def test_drop_bit():
+    return (Arith.drop_bit_integer((max(0, 2)), 20))
 
-test_flip_bit = (Arith.flip_bit_integer(1, 5))
+@functools.cache
+def test_flip_bit():
+    return (Arith.flip_bit_integer(1, 5))
 
-test_push_bit = (Arith.push_bit_integer((max(0, 3)), 5))
+@functools.cache
+def test_push_bit():
+    return (Arith.push_bit_integer((max(0, 3)), 5))
 
-test_take_bit = (Arith.take_bit_integer((max(0, 4)), 255))
+@functools.cache
+def test_take_bit():
+    return (Arith.take_bit_integer((max(0, 4)), 255))
 
-test_unset_bit = (Arith.unset_bit_integer(0, 7))
+@functools.cache
+def test_unset_bit():
+    return (Arith.unset_bit_integer(0, 7))

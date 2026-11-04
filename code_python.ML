@@ -166,12 +166,15 @@ fun invent_names vars prefix n =
  *   reserved: context of names that are not useable as new names
  *   args_num: how many arguments needed by the current stmt for saturation
  *   is_class_param: true if the current symbol is a type-class method
+ *   is_value: true for a value definition (a nullary constant without dictionaries)
+ *   is_cached_value: true for a value, which is printed as a cached function without
+ *     arguments (see serialize_python)
  *   is_constr: true for a datatype constructor without a printing
  *   ctxt: thoery context (neede to look up record field names)
  *   deresolve: module relative naming resolver
  *)
 fun print_python_stmt undefineds const_syntax reserved args_num
-    is_class_param is_value is_constr ctxt deresolve =
+    is_class_param is_value is_cached_value is_constr ctxt deresolve =
   let
     fun deresolve_const name = deresolve (Constant name);
     fun deresolve_class name = deresolve (Type_Class name);
@@ -529,8 +532,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           SOME app => print_app const_syntax some_thm vars fxy app
           (* If not, then this might be a lambda application or similar *)
         | NONE =>
-          applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy
-            (print_python_expr const_syntax some_thm vars BR t1) [t2])
+          let
+            (* an applied lambda needs brackets, or it would apply its body:
+               `lambda x: t(u)` instead of `(lambda x: t)(u)` *)
+            val head = case t1 of
+                _ `|=> _ => Pretty.enclose "(" ")"
+                  [print_python_expr const_syntax some_thm vars NOBR t1]
+              | _ => print_python_expr const_syntax some_thm vars BR t1
+          in applify "(" ")" (print_python_expr const_syntax some_thm vars NOBR) fxy head [t2] end)
       | IVar (SOME v) => Pretty.str (lookup_var vars v)
       | IVar NONE => error "can't return a variable with no name"
       | (params, _) `|=> (t', _) =>
@@ -574,6 +583,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
     and print_app_expr const_syntax some_thm vars (app as ({ sym, dictss, ...}, ts)) =
       let
         val l = args_num sym
+        (* a value is referenced by calling its cached function *)
+        val name_pretty = Pretty.str (deresolve sym ^ (if is_cached_value sym then "()" else ""))
         fun call_with head_pretty extra_dicts =
           let
             val (immediate, curried) = chop l ts
@@ -591,7 +602,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
            one argument. A constant of higher arity is eta-expanded, since the corresponding Python
            function is uncurried but function values are applied one argument at a time. *)
         if null ts andalso forall null dictss andalso l = 1
-        then [(Pretty.str o deresolve) sym]
+        then [name_pretty]
         else [print_python_expr const_syntax some_thm vars BR
                 (Code_Thingol.saturated_application l app)]
       else if is_class_param sym andalso not (null dictss)
@@ -603,14 +614,14 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             Pretty.str (attr_name sym)]
         in call_with head_pretty extra_dict_pretty end
       else if is_value sym andalso forall null dictss andalso null ts
-      then [(Pretty.str o deresolve) sym]
+      then [name_pretty]
       else
         let
           (* constructors take no dictionaries (as in SML), even when the type has sort
              constraints, e.g. the abstype morphism vec_lambda of ('a, 'b::finite) vec *)
           val dict_pretty = if is_constr sym then []
             else map_filter (print_dicts some_thm vars BR) dictss
-        in call_with ((Pretty.str o deresolve) sym) dict_pretty end
+        in call_with name_pretty dict_pretty end
       end
 
     and print_app const_syntax some_thm vars fxy (const as { sym, ... }, ts) =
@@ -763,9 +774,12 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             in { patterns = map (IVar o fst) vs_tys, rhs = body, thm = thm } end
       (* The same holds for any pattern-less equation of a function that takes
          dictionaries itself, e.g. `to_nat = nat o Rep` in a class context: it is
-         printed as `def to_nat(a_dict)`, but callers pass the arguments too. *)
+         printed as `def to_nat(a_dict)`, but callers pass the arguments too; and
+         for one of arity 2 or more, e.g. `empty = (%_ _. None)`: as a value it would
+         be a curried lambda, but callers pass all arguments at once. At arity 1 both
+         agree, so such an equation stays a value. *)
       | eta_expand_alias takes_dicts n (eq as { patterns = [], rhs, thm }) =
-          if n = 0 orelse not takes_dicts then eq
+          if n = 0 orelse (not takes_dicts andalso n < 2) then eq
           else
             let
               val names = Name.invent
@@ -812,9 +826,6 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             else map SOME (aux_params vars1 (map #patterns eqs))
           val vars2 = intro_vars (map_filter I params) vars1
           val dict_params = print_dict_args vs
-          (* a simple function without parameters and dictionary arguments can
-             be printed as a plain value (i.e., an assignment x = ...) *)
-          val prints_as_value = simple andalso null params andalso null dict_params
           val head = print_func_head const vars2 dict_params params
           fun print_return some_thm vars' t' = Pretty.block [Pretty.str "return (",
             print_python_expr const_syntax some_thm vars' NOBR t', Pretty.str ")"]
@@ -875,16 +886,16 @@ fun print_python_stmt undefineds const_syntax reserved args_num
             then Pretty.chunks [Pretty.str "while True:", indent_block 4 body]
             else body
         in
-          if prints_as_value
+          if simple
           then
-            (* value definition: `const = (expr)` *)
-            let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in print_binding some_thm vars2 (deresolve_const const, t) end
-          else if simple
-          then
-            (* simple function, plain variable args *)
-            let val { rhs = t, thm = some_thm, ... } = hd eqs
-            in Pretty.chunks [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))] end
+            (* simple function, plain variable args; a value is a function without
+               arguments that is evaluated once, when it is first used *)
+            let
+              val { rhs = t, thm = some_thm, ... } = hd eqs
+              val decorator = if is_cached_value (Constant const)
+                then [Pretty.str "@functools.cache"] else []
+            in Pretty.chunks (decorator @
+              [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))]) end
           else
             (* multiple equations and/or patterns in arguments, this compiles
                to a match/case over the arguments *)
@@ -933,15 +944,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* Add trailing underscores to a name until it is unused and not a module name, following PEP 8 *)
-    fun namify_common module_names base ((nsp_class, nsp_object), nsp_common) =
+    (* Add trailing underscores to a name until it is not reserved, unused and not a module name,
+       following PEP 8. The names in use are kept apart from the Name.context of reserved names:
+       Name.declare drops a trailing underscore, so after declaring `set_` the name `set_` would
+       still count as free, and a datatype and its constructor could both become `set_`. *)
+    fun namify_common module_names base (reserved, used) =
       let
         fun fresh x =
-          if Name.is_declared nsp_common x orelse member (op =) module_names x then fresh (x ^ "_") else x;
+          if Name.is_declared reserved x orelse Symtab.defined used x
+            orelse member (op =) module_names x
+          then fresh (x ^ "_") else x;
         val base' = fresh base;
-      in
-        (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), Name.declare base' nsp_common))
-      end;
+      in (base', (reserved, Symtab.insert_set base' used)) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
@@ -961,7 +975,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
     fun flat_program module_names =
       Code_Namespace.flat_program ctxt
         { module_prefix = "", module_name = module_name, reserved = reserved,
-          identifiers = identifiers, empty_nsp = ((reserved, reserved), reserved),
+          identifiers = identifiers, empty_nsp = (reserved, Symtab.empty),
           namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
         exports program;
 
@@ -1011,7 +1025,8 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
         | _ => false)
       | is_class_param _ = raise Fail "should never be reached";
       
-    fun is_value sym = 
+    fun is_value sym =
+      Code_Symbol.Graph.defined program sym andalso
       case sym of
         Constant _ => (
           case Code_Symbol.Graph.get_node program sym of 
@@ -1019,6 +1034,27 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               forall (null o snd) vs andalso null ts
           | _ => false)
       | _ => false;
+
+    (* A value that print_python_func would print as an assignment `v = ...`:
+      eta_expand_alias turns an alias of a function (`f_int = f`) and a value of arity
+      2 or more into a function.
+      Every such value is printed as a cached function without arguments, which is
+      called where it is used, so importing a module evaluates nothing. Modules follow
+      theories, and code equations may use constants of later theories (e.g.
+      Num.num_of_nat is implemented by Code_Numeral.num_of_integer), so modules can
+      import each other, and reading an attribute of a module that is still being
+      imported would fail. And a value that calls a constant without code only raises
+      when it is used. *)
+    fun is_cached_value (sym as Constant name) = is_value sym andalso
+          not (member (op =) undefineds name) andalso
+          (case Code_Symbol.Graph.get_node program sym of
+            Code_Thingol.Fun (((_, ty), [((_, rhs), _)]), _) =>
+              (case length (fst (Code_Thingol.unfold_fun ty)) of
+                0 => true
+              | 1 => (case rhs of IConst _ => false | _ => true)
+              | _ => false)
+          | _ => false)
+      | is_cached_value _ = false;
     
     fun classparams_of_class class = 
       case Code_Symbol.Graph.get_node program (Type_Class class) of 
@@ -1081,7 +1117,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
               of (_, NONE) => NONE
               | (_, SOME (export, stmt)) =>
                   SOME (print_python_stmt undefineds const_syntax
-                    (make_vars reserved_syms) args_num is_class_param is_value
+                    (make_vars reserved_syms) args_num is_class_param is_value is_cached_value
                     is_constr ctxt (deresolver mod_name)
                     (sym, (export, python_stmt_of_thingol stmt))));
         in (mod_name, imports, stmt_ps) end)
@@ -1089,12 +1125,13 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
 
     val nonempty_names = map #1 module_stmts;
 
-    (* modules that print a cached (dictionary-free) instance need functools *)
+    (* modules that print a cached (dictionary-free) instance or a value need functools *)
     fun needs_functools mod_name =
       let val (stmt_gr, _) = Graph.get_node python_program mod_name
-      in Code_Symbol.Graph.fold (fn (_, ((_, stmt), _)) => fn b => b orelse
+      in Code_Symbol.Graph.fold (fn (sym, ((_, stmt), _)) => fn b => b orelse
           (case stmt of
             SOME (_, Code_Thingol.Classinst { vs, ... }) => forall (null o snd) vs
+          | SOME _ => is_cached_value sym
           | _ => false)) stmt_gr false
       end;
 

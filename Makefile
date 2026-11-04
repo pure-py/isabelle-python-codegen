@@ -10,6 +10,7 @@ build-test-slow:
 test-slow: build-test-slow
 	$(PYTHON) -m py_compile test/slow/generated_basic/*.py
 	$(PYTHON) -m py_compile test/slow/generated_full/*.py
+	$(PYTEST) test/slow/run_test.py
 
 build-test-quick:
 	$(ISABELLE) build -d . -e Python_Test_Quick
