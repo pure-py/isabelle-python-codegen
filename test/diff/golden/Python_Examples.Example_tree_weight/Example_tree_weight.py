@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import functools
 import Num
-import Nat
 import List
-import HOL
 import Orderings
 
 def _abort(msg, thunk):
@@ -75,33 +73,5 @@ def root_or(d, t):
 
 def from_list(a_dict, xs):
     return (List.foldr(lambda aa: lambda b: ins(a_dict, aa, b), xs) (Leaf()))
-
-def equal_tree(a_dict, x0, x1):
-    match (x0, x1):
-        case (Leaf(), Node(x21, x22, x23)):
-            return (False)
-        case (Node(x21, x22, x23), Leaf()):
-            return (False)
-        case (Node(x21, x22, x23), Node(y21, y22, y23)):
-            return (equal_tree(a_dict, x21, y21) and (HOL.eq(a_dict, x22, y22) and equal_tree(a_dict, x23, y23)))
-        case (Leaf(), Leaf()):
-            return (True)
-        case _:
-            raise RuntimeError("match failed")
-
-def conj_case_t(t):
-    if (not equal_tree(Nat.equal_nat(), t, Leaf())):
-        target = (t)
-        match target:
-            case Leaf():
-                y = (0)
-            case Node(_, ya, _):
-                y = (ya)
-            case _:
-                raise RuntimeError("match failed")
-        x = ((y == 0))
-    else:
-        x = (False)
-    return (x)
 
 example_weight = (calc_weight_tree(weight_tree(weight_nat()), Node(Leaf(), Node(Leaf(), (max(0, 7)), Leaf()), Leaf())))

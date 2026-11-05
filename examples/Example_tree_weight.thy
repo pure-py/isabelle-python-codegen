@@ -41,4 +41,8 @@ end
 definition example_weight :: nat where
     "example_weight = calc_weight (Node Leaf (Node Leaf (7::nat) Leaf) Leaf)"
 
+export_code
+  ins root_or fold_tree from_list example_weight
+  in Python file_prefix "."
+
 end
