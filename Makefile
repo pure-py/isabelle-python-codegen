@@ -12,19 +12,19 @@ test-slow: build-test-slow
 	$(PYTHON) -m py_compile test/slow/generated_full/*.py
 
 build-test-quick:
-	$(ISABELLE) build -d . -e Python_Test_Quick
+	$(ISABELLE) build -d . -e -c Python_Test_Quick
 	
 test-quick:
 	$(PYTEST) test/quick/run_test.py
 
 build-examples:
-	$(ISABELLE) build -d . -e Python_Examples
+	$(ISABELLE) build -d . -e -c Python_Examples
 
 test-diff: build-examples
 	$(PYTEST) test/diff/run_test.py
 
 build-test-oracle:
-	$(ISABELLE) build -d . -e Python_Test_Oracle
+	$(ISABELLE) build -d . -e -c Python_Test_Oracle
 
 test-oracle: build-test-oracle
 	$(PYTEST) test/oracle/run_test.py
@@ -40,7 +40,7 @@ test-all: test-quick test-slow test-diff test-oracle
 test: test-quick
 
 build:
-	$(ISABELLE) build -d . -e Python
+	$(ISABELLE) build -d . -e -c Python
 
 .PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle build reserved-words
 
