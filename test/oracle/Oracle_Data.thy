@@ -40,7 +40,8 @@ python_check l_map_pair: "map (\<lambda>(a, b). a + b) [(1::int, 2), (3, 4)]"
 python_check l_list_all: "(list_all (\<lambda>x. x > 0) [1::int, 2], list_ex (\<lambda>x. x < 0) [1::int])"
 python_check l_insert: "(List.insert 2 [1::int, 3], List.insert 1 [1::int, 3])"
 python_check l_product: "List.product [1::int, 2] [True, False]"
-python_check l_enumerate: "enumerate 5 [True, False]"
+(* TODO: uncomment once moving to Isabelle 2026 *)
+(* python_check l_indexed_from: "indexed_from 5 [True, False]" *)
 python_check l_splice: "splice [1::int, 3] [2, 4, 6]"
 python_check l_rotate: "rotate 2 [1::int, 2, 3]"
 python_check l_min_list: "min_list [3::int, -1, 2]"
