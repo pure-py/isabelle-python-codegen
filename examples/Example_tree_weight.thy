@@ -41,4 +41,14 @@ end
 definition example_weight :: nat where
     "example_weight = calc_weight (Node Leaf (Node Leaf (7::nat) Leaf) Leaf)"
 
+(* A further example not in the paper looking at how nested case in a short-circuiting context
+gets translated *)
+
+definition conj_case_t :: "nat tree \<Rightarrow> bool" where
+  "conj_case_t t = (t \<noteq> Leaf \<and> ((case t of Leaf \<Rightarrow> 0 | Node l y r \<Rightarrow> y) = 0))"
+
+export_code
+  ins conj_case_t root_or fold_tree from_list example_weight
+  in Python file_prefix "."
+
 end

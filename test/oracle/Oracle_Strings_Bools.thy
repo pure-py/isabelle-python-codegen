@@ -41,6 +41,23 @@ definition conj_case_alt :: "nat list \<Rightarrow> bool" where
 
 python_check_grid sc_conj_case_alt: "conj_case_alt" over "[[], [0], [1], [2], [0, 5], [3, 1]]"
 
+definition conj_case_alt2 :: "nat list \<Rightarrow> bool" where
+  "conj_case_alt2 xs = (xs \<noteq> [] \<and> ((case xs of [] \<Rightarrow> 0 | (x # xs) \<Rightarrow> x) = 0))"
+
+python_check_grid sc_conj_case_alt2: "conj_case_alt2" over "[[], [0], [1], [2], [0, 5], [3, 0]]"
+
+text \<open>The same on a user datatype (as in examples/Example_tree_weight.thy): the guard is
+  an equality on the datatype rather than @{const List.null}.\<close>
+
+datatype 'a tree = Leaf | Node "'a tree" 'a "'a tree"
+
+definition conj_case_t :: "nat tree \<Rightarrow> bool" where
+  "conj_case_t t = (t \<noteq> Leaf \<and> ((case t of Leaf \<Rightarrow> 0 | Node l y r \<Rightarrow> y) = 0))"
+
+python_check_grid sc_conj_case_t: "conj_case_t" over
+  "[Leaf, Node Leaf 0 Leaf, Node Leaf 3 Leaf, Node (Node Leaf 0 Leaf) 2 Leaf,
+    Node Leaf 0 (Node Leaf 5 Leaf)]"
+
 text \<open>The other connectives, with a case of type @{typ nat} in the right operand.\<close>
 
 definition disj_case_alt :: "nat list \<Rightarrow> bool" where
