@@ -14,7 +14,7 @@ test-slow: build-test-slow
 build-test-quick:
 	$(ISABELLE) build -d . -e -c Python_Test_Quick
 	
-test-quick:
+test-quick: build-test-quick
 	$(PYTEST) test/quick/run_test.py
 
 build-examples:
