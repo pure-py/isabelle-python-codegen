@@ -944,18 +944,18 @@ fun print_python_stmt undefineds const_syntax reserved args_num
 
 fun python_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    (* Add trailing underscores to a name until it is not reserved, unused and not a module name,
-       following PEP 8. The names in use are kept apart from the Name.context of reserved names:
-       Name.declare drops a trailing underscore, so after declaring `set_` the name `set_` would
-       still count as free, and a datatype and its constructor could both become `set_`. *)
-    fun namify_common module_names base (reserved, used) =
+    (* Add trailing underscores to a name until it is not reserved, not a module name and not
+       used in this module yet, following PEP 8. The names used are kept in a plain set, not a
+       Name.context: Name.declare strips trailing underscores, so after declaring "insert_" the
+       context would still report "insert_" as free and hand it out a second time. *)
+    fun namify_common module_names base used =
       let
-        fun fresh x =
-          if Name.is_declared reserved x orelse Symtab.defined used x
-            orelse member (op =) module_names x
-          then fresh (x ^ "_") else x;
+        fun taken x =
+          Name.is_declared reserved x orelse Symtab.defined used x
+            orelse member (op =) module_names x;
+        fun fresh x = if taken x then fresh (x ^ "_") else x;
         val base' = fresh base;
-      in (base', (reserved, Symtab.insert_set base' used)) end;
+      in (base', Symtab.insert_set base' used) end;
 
     (* Python doesn't really have any naming restrictions relating to upper/lowercase etc. *)
     fun namify_stmt _ (Code_Thingol.NoStmt) = raise Fail "should not be reached"
@@ -975,7 +975,7 @@ fun python_program_of_program ctxt module_name reserved identifiers exports prog
     fun flat_program module_names =
       Code_Namespace.flat_program ctxt
         { module_prefix = "", module_name = module_name, reserved = reserved,
-          identifiers = identifiers, empty_nsp = (reserved, Symtab.empty),
+          identifiers = identifiers, empty_nsp = Symtab.empty,
           namify_stmt = namify_stmt module_names, modify_stmt = modify_stmt }
         exports program;
 

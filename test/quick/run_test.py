@@ -335,3 +335,32 @@ def test_tail_calls_with_closures_stay_recursive():
     tc = _load_tail_calls()
     assert tc.tc_shift_small() == 13
     assert tc.tc_shift(3, lambda x: x)(0) == 3
+
+
+# ---- name clashes in one module (Quick_Test_Name_Clash.thy, exported with module_name) ----
+
+def _load_name_clash():
+    matches = list(PYTHON_OUT_ROOT.rglob("Quick_Test_Name_Clash.py"))
+    if not matches:
+        pytest.skip("Quick_Test_Name_Clash.py not generated")
+    sys.path.insert(0, str(matches[0].parent))
+    import Quick_Test_Name_Clash
+    return Quick_Test_Name_Clash
+
+
+def test_name_clash_own_insert():
+    nc = _load_name_clash()
+    assert nc.nc_own(3, [1, 2]) == [1, 2, 3]
+
+
+def test_name_clash_list_insert():
+    nc = _load_name_clash()
+    assert nc.nc_list(2, [1, 2]) == [1, 2]
+    assert nc.nc_list(3, [1, 2]) == [3, 1, 2]
+
+
+def test_name_clash_set_insert():
+    nc = _load_name_clash()
+    assert nc.nc_set(3, 1, [2, 3])
+    assert nc.nc_set(1, 1, [2, 3])
+    assert not nc.nc_set(4, 1, [2, 3])

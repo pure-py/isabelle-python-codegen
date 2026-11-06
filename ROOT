@@ -41,6 +41,7 @@ session Python_Examples in "examples" = Python +
     Example_iarray
     Example_tail_calls
     Example_short_circuit
+    Example_tree_weight
   export_files (in "python_out") "*:**"
 
 session Python_Test_Quick in "test/quick" = Python +
@@ -49,6 +50,7 @@ session Python_Test_Quick in "test/quick" = Python +
   theories [document = false]
     Quick_Test
     Quick_Test_Tail_Calls
+    Quick_Test_Name_Clash
   export_files (in "python_out") "*:**"
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +
