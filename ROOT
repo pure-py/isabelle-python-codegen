@@ -50,6 +50,7 @@ session Python_Test_Quick in "test/quick" = Python +
   theories [document = false]
     Quick_Test
     Quick_Test_Tail_Calls
+    Quick_Test_Name_Clash
   export_files (in "python_out") "*:**"
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +
