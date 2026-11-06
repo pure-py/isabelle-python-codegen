@@ -264,6 +264,14 @@ definition twice_twice :: "'a::plus \<Rightarrow> 'a" where
   "twice_twice = (\<lambda>x. x + x) \<circ> (\<lambda>x. x + x)"
 definition e_twice_twice :: int where "e_twice_twice = twice_twice 3"
 
+section \<open>A value of a function type of arity 2\<close>
+
+text \<open>Callers pass both arguments at once, so it is printed as a function of two
+  parameters rather than as a curried lambda.\<close>
+
+definition v_first :: "int \<Rightarrow> int \<Rightarrow> int" where "v_first = (\<lambda>x y. x)"
+definition v_first_use :: int where "v_first_use = v_first 3 4"
+
 section \<open>Code.abort in expression position\<close>
 
 definition a_checked :: "int \<Rightarrow> int" where
@@ -295,6 +303,7 @@ export_code
   ia_nth ia_grid ia_get ia_rows ia_head ia_any_neg
   z_int_div z_int_mod z_nat_div z_nat_mod z_int_floor
   l_shadow_none l_shadow_some c_boxed e_twice_twice
+  v_first v_first_use
   in Python file_prefix "."
 
 end

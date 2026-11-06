@@ -10,7 +10,7 @@ def _abort(msg, thunk):
 def foldr(f, x1):
     match (f, x1):
         case (fa, []):
-            return (Fun.id_)
+            return (Fun.id_())
         case (fa, [x, *xs]):
             return (Fun.comp((fa(x)), foldr(fa, xs)))
         case _:

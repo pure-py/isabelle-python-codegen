@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -22,15 +23,25 @@ def grade_code(score):
                 else:
                     return (max(0, 4))
 
-grade_a = (grade_code((max(0, 95))))
+@functools.cache
+def grade_a():
+    return (grade_code((max(0, 95))))
 
-grade_b = (grade_code((max(0, 85))))
+@functools.cache
+def grade_b():
+    return (grade_code((max(0, 85))))
 
-grade_c = (grade_code((max(0, 75))))
+@functools.cache
+def grade_c():
+    return (grade_code((max(0, 75))))
 
-grade_d = (grade_code((max(0, 65))))
+@functools.cache
+def grade_d():
+    return (grade_code((max(0, 65))))
 
-grade_f = (grade_code((max(0, 40))))
+@functools.cache
+def grade_f():
+    return (grade_code((max(0, 40))))
 
 def nested_then(x, y):
     if ((0 < x)):
@@ -41,8 +52,14 @@ def nested_then(x, y):
     else:
         return (3)
 
-nested_then_f = (nested_then(((- 1)), 1))
+@functools.cache
+def nested_then_f():
+    return (nested_then(((- 1)), 1))
 
-nested_then_tf = (nested_then(1, ((- 1))))
+@functools.cache
+def nested_then_tf():
+    return (nested_then(1, ((- 1))))
 
-nested_then_tt = (nested_then(1, 1))
+@functools.cache
+def nested_then_tt():
+    return (nested_then(1, 1))

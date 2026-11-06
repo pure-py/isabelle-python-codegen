@@ -104,4 +104,6 @@ def conj_case_t(t):
         x = (False)
     return (x)
 
-example_weight = (calc_weight_tree(weight_tree(weight_nat()), Node(Leaf(), Node(Leaf(), (max(0, 7)), Leaf()), Leaf())))
+@functools.cache
+def example_weight():
+    return (calc_weight_tree(weight_tree(weight_nat()), Node(Leaf(), Node(Leaf(), (max(0, 7)), Leaf()), Leaf())))

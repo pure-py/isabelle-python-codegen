@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 import Option
 
@@ -17,13 +18,21 @@ def describe_opt(x0):
         case _:
             raise RuntimeError("match failed")
 
-o_some = (Option.Some(5))
+@functools.cache
+def o_some():
+    return (Option.Some(5))
 
-d1 = (describe_opt(o_some))
+@functools.cache
+def d1():
+    return (describe_opt(o_some()))
 
-o_none = (Option.None_())
+@functools.cache
+def o_none():
+    return (Option.None_())
 
-d2 = (describe_opt(o_none))
+@functools.cache
+def d2():
+    return (describe_opt(o_none()))
 
 def describe_opt2(x0):
     match x0:
@@ -34,6 +43,10 @@ def describe_opt2(x0):
         case _:
             raise RuntimeError("match failed")
 
-d3 = (describe_opt2(o_some))
+@functools.cache
+def d3():
+    return (describe_opt2(o_some()))
 
-d4 = (describe_opt2(o_none))
+@functools.cache
+def d4():
+    return (describe_opt2(o_none()))

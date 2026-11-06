@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 import Num
 
 def _abort(msg, thunk):
@@ -26,7 +27,9 @@ def px(x0):
 def point_sum(p, q):
     return ((((((px(p) + py(p))) + px(q))) + py(q)))
 
-origin = (point_ext_(0, 0, None))
+@functools.cache
+def origin():
+    return (point_ext_(0, 0, None))
 
 def px_update(pxa, x1):
     match (pxa, x1):
@@ -36,6 +39,10 @@ def px_update(pxa, x1):
 def move_x(p, dx):
     return (px_update(lambda _: (px(p) + dx), p))
 
-shifted = (move_x(origin, 5))
+@functools.cache
+def shifted():
+    return (move_x(origin(), 5))
 
-total = (point_sum(origin, shifted))
+@functools.cache
+def total():
+    return (point_sum(origin(), shifted()))

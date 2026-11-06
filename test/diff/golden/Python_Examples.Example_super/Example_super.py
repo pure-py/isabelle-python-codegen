@@ -59,4 +59,6 @@ def describable_verbose_color():
 def announce_verbose(a_dict, x):
     return (a_dict.describable_describable_verbose.describe(x) + " -- " + a_dict.describe_verbose(x))
 
-announce_verbose_red = (announce_verbose(describable_verbose_color(), Red()))
+@functools.cache
+def announce_verbose_red():
+    return (announce_verbose(describable_verbose_color(), Red()))

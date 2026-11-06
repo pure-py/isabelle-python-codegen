@@ -17,9 +17,6 @@ setup \<open>fn thy =>
 
 declare [[default_code_width = 2000]]
 
-code_identifier
-  code_module Code_Numeral \<rightharpoonup> (Python) Arith
-
 (* Panic, by a helper function, since Code.abort occurs in expression position *)
 code_printing
   constant Code.abort \<rightharpoonup> (Python) "'_abort"

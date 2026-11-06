@@ -2,11 +2,14 @@
 
 from dataclasses import dataclass
 from typing import Any, Callable
+import functools
 
 def _abort(msg, thunk):
     raise RuntimeError(msg)
 
-id_ = (lambda x: x)
+@functools.cache
+def id_():
+    return (lambda x: x)
 
 def comp(f, g):
     return (lambda x: f(g(x)))
