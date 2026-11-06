@@ -4,3 +4,6 @@ section "Python Code Generation"
 
 option python_tail_calls : bool = false for content
   -- "print self tail calls of generated Python functions as loops (see code_python.ML)"
+
+option python_cache : bool = true for content
+  -- "memoise values and dictionary-free instances of generated Python code with functools.cache (see code_python.ML)"

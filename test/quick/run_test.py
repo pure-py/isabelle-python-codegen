@@ -337,6 +337,22 @@ def test_tail_calls_with_closures_stay_recursive():
     assert tc.tc_shift(3, lambda x: x)(0) == 3
 
 
+# ---- python_cache = false (Quick_Test_No_Cache.thy, exported with the option off) ----
+
+def test_no_cache_prints_no_functools_cache():
+    matches = list(PYTHON_OUT_ROOT.rglob("Quick_Test_No_Cache.py"))
+    if not matches:
+        pytest.skip("Quick_Test_No_Cache.py not generated")
+    source = matches[0].read_text()
+    assert "functools" not in source
+    sys.path.insert(0, str(matches[0].parent))
+    import Quick_Test_No_Cache as nc
+    assert nc.nc_value() == 55
+    assert nc.nc_value() == 55
+    assert nc.nc_sorted()([1, 2, 3])
+    assert not nc.nc_sorted()([2, 1])
+
+
 # ---- name clashes in one module (Quick_Test_Name_Clash.thy, exported with module_name) ----
 
 def _load_name_clash():

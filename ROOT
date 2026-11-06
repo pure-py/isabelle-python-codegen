@@ -51,6 +51,7 @@ session Python_Test_Quick in "test/quick" = Python +
     Quick_Test
     Quick_Test_Tail_Calls
     Quick_Test_Name_Clash
+    Quick_Test_No_Cache
   export_files (in "python_out") "*:**"
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +
