@@ -29,20 +29,23 @@ build-test-oracle:
 test-oracle: build-test-oracle
 	$(PYTEST) test/oracle/run_test.py
 
+test-names:
+	$(PYTEST) test/test_unique_names.py
+
 reseed:	build-examples
 	$(PYTHON) test/diff/reseed_goldens.py
 
 reserved-words:
 	$(PYTHON) etc/update_reserved_words.py
 
-test-all: test-quick test-slow test-diff test-oracle
+test-all: test-quick test-slow test-diff test-oracle test-names
 
 test: test-quick
 
 build:
 	$(ISABELLE) build -d . -e -c Python
 
-.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle build reserved-words
+.PHONY: default build-test-slow test-slow build-test-quick test-quick build-examples test-diff reseed test-all test build-test-oracle test-oracle test-names build reserved-words
 
 
 
