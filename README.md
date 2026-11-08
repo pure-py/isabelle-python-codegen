@@ -82,6 +82,17 @@ def num_of_nat():
     return (Fun.comp(Code_Numeral.num_of_integer, lambda a: a))
 ```
 
+The option `python_cache` (on by default) controls the `@functools.cache`
+decorator, on values and on instances without dictionary arguments. Turn it off
+to measure what the caching gains; values are then still functions without
+arguments, but are recomputed on every use:
+
+```bash
+isabelle build -o python_cache=false -d . -e Python_Examples
+```
+
+or `declare [[python_cache = false]]` in a theory, before `export_code`.
+
 Code that uses the generated modules therefore calls a value too
 (`Example_nat.nat_sum()`). An alias of a function (`f_int = f`) is printed as an
 ordinary function instead.

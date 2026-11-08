@@ -6,6 +6,7 @@ sig
   val enable_native_encoding: string -> theory -> theory
   val print_python_string: string -> string
   val tail_calls: bool Config.T
+  val cache: bool Config.T
 end;
 
 structure Code_Python : CODE_PYTHON =
@@ -26,6 +27,16 @@ val tail_calls =
   if can Options.default_typ "python_tail_calls"
   then Attrib.setup_option_bool ("python_tail_calls", \<^here>)
   else Attrib.setup_config_bool \<^binding>\<open>python_tail_calls\<close> (K false);
+
+(* Memoise values and dictionary-free instances with @functools.cache (see serialize_python).
+   On by default; turn it off with `declare [[python_cache = false]]` or
+   `isabelle build -o python_cache=false`, e.g. to measure what the caching gains. Without it,
+   values are still printed as functions without arguments, but are recomputed on every use.
+   Falls back to a configuration option as python_tail_calls does. *)
+val cache =
+  if can Options.default_typ "python_cache"
+  then Attrib.setup_option_bool ("python_cache", \<^here>)
+  else Attrib.setup_config_bool \<^binding>\<open>python_cache\<close> (K true);
 
 structure Transparent_Wrapper_Data = Theory_Data
 (
@@ -732,7 +743,8 @@ fun print_python_stmt undefineds const_syntax reserved args_num
           Pretty.enum "," "(" ")" dict_args, Pretty.str ":"]
         (* an instance without dictionary arguments always builds the same
            (frozen) dictionary, so build it once *)
-        val decorator = if null dict_args then [Pretty.str "@functools.cache"] else []
+        val decorator = if null dict_args andalso Config.get ctxt cache
+          then [Pretty.str "@functools.cache"] else []
       in Pretty.chunks (decorator @ [head, indent_block 4 body]) end;
 
     fun print_func_head const vctxt dicts params =
@@ -892,7 +904,7 @@ fun print_python_stmt undefineds const_syntax reserved args_num
                arguments that is evaluated once, when it is first used *)
             let
               val { rhs = t, thm = some_thm, ... } = hd eqs
-              val decorator = if is_cached_value (Constant const)
+              val decorator = if is_cached_value (Constant const) andalso Config.get ctxt cache
                 then [Pretty.str "@functools.cache"] else []
             in Pretty.chunks (decorator @
               [head, indent_block 4 (loop_body (print_rhs some_thm vars2 t))]) end
@@ -1128,7 +1140,7 @@ fun serialize_python undefineds _ ctxt { module_name, reserved_syms,
     (* modules that print a cached (dictionary-free) instance or a value need functools *)
     fun needs_functools mod_name =
       let val (stmt_gr, _) = Graph.get_node python_program mod_name
-      in Code_Symbol.Graph.fold (fn (sym, ((_, stmt), _)) => fn b => b orelse
+      in Config.get ctxt cache andalso Code_Symbol.Graph.fold (fn (sym, ((_, stmt), _)) => fn b => b orelse
           (case stmt of
             SOME (_, Code_Thingol.Classinst { vs, ... }) => forall (null o snd) vs
           | SOME _ => is_cached_value sym
