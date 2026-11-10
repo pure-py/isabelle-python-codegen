@@ -9,7 +9,7 @@ session Python = HOL +
     Python_IArray
 
 session Python_Examples in "examples" = Python +
-  options [timeout = 300]
+  options [timeout = 300, document = false]
   theories
     Example
     Example_tyclass
@@ -46,8 +46,8 @@ session Python_Examples in "examples" = Python +
 
 session Python_Test_Quick in "test/quick" = Python +
   description "Quick test session for Python backend"
-  options [timeout = 300]
-  theories [document = false]
+  options [timeout = 300, document = false]
+  theories
     Quick_Test
     Quick_Test_Tail_Calls
     Quick_Test_Name_Clash
@@ -56,14 +56,14 @@ session Python_Test_Quick in "test/quick" = Python +
 
 session Python_Test_Slow in "test/slow" = "HOL-Library" +
   description "Slow test session: a slimmed subset of the HOL-Library candidate set"
-  options [timeout = 2400]
+  options [timeout = 2400, document = false]
   sessions
     Python
     "HOL-Number_Theory"
     "HOL-Data_Structures"
     "HOL-Examples"
     "HOL-Computational_Algebra"
-  theories [document = false]
+  theories
     Candidates
     Extract_Basic
     Extract_Full
