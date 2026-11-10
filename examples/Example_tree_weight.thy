@@ -12,13 +12,16 @@ fun ins :: "'a::linorder \<Rightarrow> 'a tree \<Rightarrow> 'a tree" where
        else Node l y r)"
 
 definition root_or :: "'a \<Rightarrow> 'a tree \<Rightarrow> 'a list" where
-    "root_or d t = [case t of Leaf \<Rightarrow> d | Node _ x _ \<Rightarrow> x]"
+    "root_or d t = [case t of Leaf \<Rightarrow> d
+                            | Node _ x _ \<Rightarrow> x]"
 
-fun fold_tree :: "('b \<Rightarrow> 'a \<Rightarrow> 'b \<Rightarrow> 'b) \<Rightarrow> 'b \<Rightarrow> 'a tree \<Rightarrow> 'b" where
+fun fold_tree :: "('b \<Rightarrow> 'a \<Rightarrow> 'b \<Rightarrow> 'b) \<Rightarrow> 'b \<Rightarrow> 'a tree
+                      \<Rightarrow> 'b" where
     "fold_tree f e Leaf = e"
   | "fold_tree f e (Node l x r) = f (fold_tree f e l) x (fold_tree f e r)"
 
-definition from_list :: "'a::linorder list \<Rightarrow> 'a tree" where
+definition from_list :: "'a::linorder list
+                         \<Rightarrow> 'a tree" where
     "from_list xs = foldr ins xs Leaf"
 
 class weight =
@@ -39,7 +42,8 @@ begin
 end
 
 definition example_weight :: nat where
-    "example_weight = calc_weight (Node Leaf (Node Leaf (7::nat) Leaf) Leaf)"
+    "example_weight = calc_weight (Node Leaf
+                                     (Node Leaf (7::nat) Leaf) Leaf)"
 
 export_code
   ins root_or fold_tree from_list example_weight
