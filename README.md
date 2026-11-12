@@ -1,4 +1,6 @@
-# isabelle-python-codegen
+# Python code generator for Isabelle/HOL
+
+<img src="logo/isabelle_python_logo_compact.png" alt="Isabelle/Python logo" width="200">
 
 A custom Isabelle/HOL code-generation backend that targets
 Python 3.
